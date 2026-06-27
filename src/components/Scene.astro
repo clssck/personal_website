@@ -214,7 +214,9 @@
     diorama.style.transform = "rotateY(3deg)";
     draw(0);
     alignThread();
-    [60, 200, 600].forEach((t) => setTimeout(alignThread, t));
+    requestAnimationFrame(alignThread);
+    // no rAF loop under reduced motion, so re-align whenever layout changes
+    new ResizeObserver(alignThread).observe(document.documentElement);
   } else {
     requestAnimationFrame(frame);
   }
