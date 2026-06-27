@@ -1,0 +1,222 @@
+---
+// Background diorama — a "pop-up book": layered elements at different depths
+// inside a 3D perspective stage that tilts toward the pointer, so things
+// parallax / pop forward. Canopy blobs (far), drifting +/dot/sparkle
+// particles (mid), depth-of-field leaves + a focal Russian Blue cat (the one
+// raster, cat.webp) batting a yarn thread (front). Replicates the zustand demo
+// technique (layered planes + pointer tilt + DoF). Freezes under reduced-motion.
+---
+
+<div class="scene" id="scene" aria-hidden="true">
+  <div class="diorama" id="diorama">
+    <div class="canopy">
+      <svg viewBox="0 0 1600 460" preserveAspectRatio="xMidYMin slice">
+        <path
+          d="M0 0H1600V215C1512 300 1452 188 1372 252C1292 316 1214 196 1132 268C1050 338 988 212 904 282C824 348 762 224 680 286C600 346 540 212 460 278C380 334 318 200 240 266C160 322 92 210 0 262Z"
+          fill="#070411"
+        />
+        <path
+          d="M0 0H1600V150C1520 220 1450 130 1360 190C1250 262 1170 150 1070 210C980 264 900 156 800 214C710 266 630 150 530 206C440 256 360 150 250 200C150 246 80 150 0 196Z"
+          fill="#0a0616"
+          opacity="0.85"
+        />
+      </svg>
+    </div>
+
+    <div class="layer" style="--z: -70px"><canvas id="fx"></canvas></div>
+
+    <div class="cat">
+      <img class="cat__img" src="/cat.webp" alt="A Russian Blue cat reaching up to play" width="760" height="1069" />
+    </div>
+
+    <div class="leaf leaf--tl"><svg viewBox="0 0 300 320">
+      <defs><linearGradient id="lfa" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#13503a" /><stop offset="1" stop-color="#082c22" />
+      </linearGradient></defs>
+      <path d="M150 8C124 70 96 86 60 92C92 104 110 120 116 150C84 150 58 168 44 206C80 196 104 206 118 232C100 250 96 286 150 312C204 286 200 250 182 232C196 206 220 196 256 206C242 168 216 150 184 150C190 120 208 104 240 92C204 86 176 70 150 8Z" fill="url(#lfa)" />
+      <path d="M150 36V300" stroke="#2c9069" stroke-width="3" opacity="0.45" />
+    </svg></div>
+
+    <div class="leaf leaf--bl"><svg viewBox="0 0 300 320">
+      <defs><linearGradient id="lfb" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#1c6b48" /><stop offset="1" stop-color="#0c3f2e" />
+      </linearGradient></defs>
+      <path d="M150 8C124 70 96 86 60 92C92 104 110 120 116 150C84 150 58 168 44 206C80 196 104 206 118 232C100 250 96 286 150 312C204 286 200 250 182 232C196 206 220 196 256 206C242 168 216 150 184 150C190 120 208 104 240 92C204 86 176 70 150 8Z" fill="url(#lfb)" />
+      <path d="M150 36V300M150 120 96 96M150 120 204 96M150 186 70 162M150 186 230 162" stroke="#46c089" stroke-width="3" stroke-linecap="round" opacity="0.5" />
+    </svg></div>
+
+    <div class="leaf leaf--br"><svg viewBox="0 0 300 320">
+      <defs><linearGradient id="lfc" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#1a6344" /><stop offset="1" stop-color="#0a3a2a" />
+      </linearGradient></defs>
+      <path d="M150 8C124 70 96 86 60 92C92 104 110 120 116 150C84 150 58 168 44 206C80 196 104 206 118 232C100 250 96 286 150 312C204 286 200 250 182 232C196 206 220 196 256 206C242 168 216 150 184 150C190 120 208 104 240 92C204 86 176 70 150 8Z" fill="url(#lfc)" />
+      <path d="M150 36V300M150 120 96 96M150 120 204 96M150 186 70 162M150 186 230 162" stroke="#46c089" stroke-width="3" stroke-linecap="round" opacity="0.5" />
+    </svg></div>
+  </div>
+
+  <div class="thread" aria-hidden="true">
+    <span class="thread__line"></span>
+    <span class="thread__ball">
+      <svg viewBox="0 0 56 56">
+        <circle cx="28" cy="28" r="24" fill="#e0674f" />
+        <path d="M8 22C22 14 36 18 47 30M7 34C20 46 38 42 49 30M18 9C20 30 26 48 19 53M38 10C36 31 31 49 38 54" fill="none" stroke="#b8412f" stroke-width="2" stroke-linecap="round" opacity="0.85" />
+      </svg>
+    </span>
+  </div>
+
+  <div class="grain"></div>
+</div>
+
+<script>
+  const diorama = document.getElementById("diorama") as HTMLElement;
+  const cv = document.getElementById("fx") as HTMLCanvasElement;
+  const fx = cv.getContext("2d")!;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let W = 0, H = 0, CW = 0, CH = 0, DPR = 1;
+
+  type P = { x: number; y: number; t: number; s: number; a: number; vx: number; vy: number; ph: number; c: string };
+  let parts: P[] = [];
+
+  function seed() {
+    const n = Math.min(150, Math.round((CW * CH) / 15000));
+    parts = Array.from({ length: n }, () => {
+      const roll = Math.random();
+      // 0 cross, 1 dot, 2 sparkle
+      const t = roll < 0.46 ? 0 : roll < 0.86 ? 1 : 2;
+      const orange = t === 1 && Math.random() < 0.32;
+      return {
+        x: Math.random() * CW,
+        y: Math.random() * CH,
+        t,
+        s: t === 2 ? 4 + Math.random() * 7 : 3 + Math.random() * 6,
+        a: 0.3 + Math.random() * 0.6,
+        vx: (Math.random() - 0.5) * 0.1,
+        vy: -0.04 - Math.random() * 0.12,
+        ph: Math.random() * Math.PI * 2,
+        c: orange ? "#ff8a3d" : "#ffffff",
+      };
+    });
+  }
+
+  function size() {
+    DPR = Math.min(window.devicePixelRatio || 1, reduce ? 1 : 1.5);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    CW = W * 1.52;
+    CH = H * 1.52;
+    cv.width = Math.floor(CW * DPR);
+    cv.height = Math.floor(CH * DPR);
+    fx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    seed();
+  }
+
+  function cross(x: number, y: number, s: number) {
+    fx.lineWidth = Math.max(1, s * 0.24);
+    fx.lineCap = "round";
+    fx.strokeStyle = "#ffffff";
+    fx.beginPath();
+    fx.moveTo(x - s, y); fx.lineTo(x + s, y);
+    fx.moveTo(x, y - s); fx.lineTo(x, y + s);
+    fx.stroke();
+  }
+  function sparkle(x: number, y: number, s: number) {
+    const k = s * 0.18;
+    fx.fillStyle = "#ffffff";
+    fx.beginPath();
+    fx.moveTo(x, y - s);
+    fx.quadraticCurveTo(x + k, y - k, x + s, y);
+    fx.quadraticCurveTo(x + k, y + k, x, y + s);
+    fx.quadraticCurveTo(x - k, y + k, x - s, y);
+    fx.quadraticCurveTo(x - k, y - k, x, y - s);
+    fx.fill();
+  }
+
+  function draw(time: number) {
+    fx.clearRect(0, 0, CW, CH);
+    for (const p of parts) {
+      if (!reduce) {
+        p.x += p.vx; p.y += p.vy;
+        if (p.y < -12) p.y = CH + 12;
+        if (p.x < -12) p.x = CW + 12; else if (p.x > CW + 12) p.x = -12;
+      }
+      const tw = reduce ? 1 : 0.55 + 0.45 * Math.sin(time * 0.0016 + p.ph);
+      fx.globalAlpha = Math.min(1, p.a * tw);
+      if (p.t === 0) cross(p.x, p.y, p.s);
+      else if (p.t === 2) sparkle(p.x, p.y, p.s);
+      else {
+        fx.fillStyle = p.c;
+        fx.beginPath();
+        fx.arc(p.x, p.y, p.s * 0.42, 0, Math.PI * 2);
+        fx.fill();
+      }
+    }
+    fx.globalAlpha = 1;
+  }
+
+  // pointer + idle parallax tilt
+  let mnx = 0, mny = 0, mx = 0, my = 0;
+  if (!reduce) {
+    window.addEventListener("pointermove", (e) => {
+      mnx = (e.clientX / W) * 2 - 1;
+      mny = (e.clientY / H) * 2 - 1;
+    }, { passive: true });
+  }
+
+  const start = performance.now();
+  function tilt(t: number) {
+    const idleX = 0.16 * Math.sin(t * 0.00025);
+    const idleY = 0.12 * Math.cos(t * 0.0002);
+    const tx = mnx * 0.82 + idleX;
+    const ty = mny * 0.82 + idleY;
+    mx += (tx - mx) * 0.06;
+    my += (ty - my) * 0.06;
+    diorama.style.transform =
+      `rotateX(${(-my * 4).toFixed(2)}deg) rotateY(${(mx * 7).toFixed(2)}deg) translate3d(${(mx * 10).toFixed(1)}px, ${(my * 6).toFixed(1)}px, 0)`;
+  }
+
+  function frame(now: number) {
+    tilt(now - start);
+    draw(now);
+    alignThread();
+    requestAnimationFrame(frame);
+  }
+
+  size();
+  window.addEventListener("resize", size, { passive: true });
+
+  // dangling yarn ball tracks the cat's raised paw (follows the tilting diorama)
+  const thread = document.querySelector(".thread") as HTMLElement | null;
+  const catImg = document.querySelector(".cat__img") as HTMLImageElement | null;
+  const threadBall = thread?.querySelector(".thread__ball") as HTMLElement | null;
+  const PAW_X = 0.84, PAW_Y = 0.17; // raised-paw position within the cat image
+  function alignThread() {
+    if (!thread || !catImg) return;
+    const r = catImg.getBoundingClientRect();
+    if (!r.width) return;
+    const ballH = threadBall ? threadBall.offsetHeight : 46;
+    thread.style.left = r.left + r.width * PAW_X - thread.offsetWidth / 2 + "px";
+    thread.style.height = r.top + r.height * PAW_Y + ballH / 2 + "px";
+  }
+  if (catImg && !catImg.complete) catImg.addEventListener("load", alignThread);
+  if (threadBall && thread) {
+    threadBall.addEventListener("click", () => {
+      thread.classList.remove("bounce");
+      void thread.offsetWidth; // restart the animation on rapid clicks
+      thread.classList.add("bounce");
+    });
+    thread.addEventListener("animationend", (e) => {
+      if ((e as AnimationEvent).animationName === "threadBounce")
+        thread.classList.remove("bounce");
+    });
+  }
+  if (reduce) {
+    diorama.style.transform = "rotateY(3deg)";
+    draw(0);
+    alignThread();
+    [60, 200, 600].forEach((t) => setTimeout(alignThread, t));
+  } else {
+    requestAnimationFrame(frame);
+  }
+
+</script>

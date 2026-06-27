@@ -1,0 +1,294 @@
+---
+interface Props {
+  github: string;
+  name: string;
+}
+const { github, name } = Astro.props;
+---
+
+<section class="termwrap reveal" data-d="2">
+  <div class="term" id="term" data-github={github} data-name={name}>
+    <div class="term__bar">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span class="term__title">visitor@janos — zsh</span>
+    </div>
+    <div class="term__screen" id="screen">
+      <div id="out"></div>
+      <div class="term__line" id="inputline"><span class="prompt"><span class="u"
+            >visitor</span><span class="dim">@</span><span class="h">janos</span><span
+            class="dim">:~$</span></span><span id="typed"></span><span class="cursor"
+        ></span><span class="ghost" id="ghost"></span><input id="kbd" type="text" autocomplete="off" autocapitalize="off"
+          autocorrect="off" spellcheck="false" aria-label="terminal input" /></div>
+    </div>
+  </div>
+  <p class="hint">psst — it's a real terminal. type <span class="a">help</span> and hit <kbd>↵</kbd></p>
+</section>
+
+<script>
+  const term = document.getElementById("term") as HTMLElement;
+  const out = document.getElementById("out") as HTMLElement;
+  const view = document.getElementById("screen") as HTMLElement;
+  const kbd = document.getElementById("kbd") as HTMLInputElement;
+  const typed = document.getElementById("typed") as HTMLElement;
+  const ghost = document.getElementById("ghost") as HTMLElement;
+
+  const GITHUB = term.dataset.github || "https://github.com/clssck";
+  const NAME = term.dataset.name || "János Földvárszki";
+
+  const PROMPT =
+    '<span class="u">visitor</span><span class="dim">@</span><span class="h">janos</span><span class="dim">:~$</span>&nbsp;';
+
+  const esc = (s: string) =>
+    s.replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!
+    );
+
+  const ghLink = `<a href="${GITHUB}" target="_blank" rel="noopener noreferrer">${esc(
+    GITHUB.replace(/^https?:\/\//, "")
+  )}</a>`;
+
+  function line(html: string, cls?: string) {
+    const d = document.createElement("div");
+    d.className = "ln" + (cls ? " " + cls : "");
+    d.innerHTML = html;
+    out.appendChild(d);
+  }
+  function printLines(arr: string[] | null) {
+    if (!arr) return;
+    for (const l of arr) line(l);
+  }
+  const scrollDown = () => (view.scrollTop = view.scrollHeight);
+  const pick = <T,>(a: T[]) => a[(Math.random() * a.length) | 0];
+
+  const FORTUNES = [
+    "There are only two hard things in CS: cache invalidation and naming things.",
+    "“It works on my machine” is not a deployment strategy.",
+    "Premature optimization is the root of all evil. — Knuth",
+    "rm -rf doubts/",
+    "A good UI is like a joke — if you have to explain it, it isn't that good.",
+  ];
+
+  const NEOFETCH = [
+    "<span class='a'>   ╭───────────╮ </span>  <span class='grad'>" + esc(NAME) + "</span>",
+    "<span class='a'>   │  ◠     ◠  │ </span>  <span class='dim'>────────────────</span>",
+    "<span class='a'>   │     ‿     │ </span>  <span class='k'>role  </span> computer enjoyer",
+    "<span class='a'>   ╰───────────╯ </span>  <span class='k'>stack </span> astro · ts · webgl",
+    "<span class='a'>      ║   ║      </span>  <span class='k'>site  </span> astro · static · no framework runtime",
+    "<span class='a'>   ═══╩═══╩═══   </span>  <span class='k'>github</span> " + ghLink,
+  ];
+
+  type Cmd = (args: string[], rest: string) => string[] | null;
+  const commands: Record<string, Cmd> = {
+    help: () => [
+      "available commands —",
+      "  <span class='a'>whoami</span>     who am i",
+      "  <span class='a'>about</span>      a little more",
+      "  <span class='a'>skills</span>     what i tinker with",
+      "  <span class='a'>github</span>     open my github",
+      "  <span class='a'>neofetch</span>   the rundown",
+      "  <span class='a'>ls</span> · <span class='a'>cat</span>   nose around files",
+      "  <span class='a'>echo</span> · <span class='a'>date</span> · <span class='a'>fortune</span> · <span class='a'>clear</span>",
+      "",
+      "<span class='dim'>↑/↓ history · tab completes</span>",
+    ],
+    whoami: () => [
+      `<span class='grad'>${esc(NAME)}</span>`,
+      "I like <b>computers</b>.",
+      "",
+      `→ ${ghLink}`,
+    ],
+    about: () => [
+      "Hi — I'm János.",
+      "I like building things with computers and figuring out how they work.",
+      "This little corner of the web is one of those things.",
+      "",
+      "A blog and some projects are on the way. For now, try <span class='a'>github</span>.",
+    ],
+    skills: () => [
+      "things i play with —",
+      "  the web · typescript · a bit of everything",
+      "  <span class='dim'>curiosity &gt; frameworks</span>",
+    ],
+    github: () => {
+      window.open(GITHUB, "_blank", "noopener");
+      return [`opening ${ghLink} …`];
+    },
+    ls: () => ["about.txt   skills.txt   github.url   <span class='a'>secrets/</span>"],
+    cat: (args) => {
+      const f = args[0];
+      if (!f) return ["usage: cat <file>"];
+      const files: Record<string, string[]> = {
+        "about.txt": commands.about([], ""),
+        "skills.txt": commands.skills([], ""),
+        "github.url": [GITHUB],
+      };
+      return files[f] || [`<span class='err'>cat: ${esc(f)}: No such file or directory</span>`];
+    },
+    neofetch: () => NEOFETCH,
+    echo: (_a, rest) => [esc(rest || "")],
+    date: () => [new Date().toString()],
+    pwd: () => ["/home/janos"],
+    fortune: () => [pick(FORTUNES)],
+    sudo: () => [
+      "<span class='err'>sudo: permission denied</span> — you're a guest here, but a welcome one.",
+    ],
+    secrets: () => ["<span class='dim'>nice try — nothing here but stardust.</span>"],
+    history: () =>
+      HIST.length ? HIST.map((h, i) => `  ${i + 1}  ${esc(h)}`) : ["(empty)"],
+    clear: () => {
+      out.innerHTML = "";
+      return null;
+    },
+  };
+
+  const HIST: string[] = [];
+  let hi = 0;
+
+  const CAT_FILES = ["about.txt", "skills.txt", "github.url"];
+
+  type Completion = {
+    prefix: string;
+    token: string;
+    candidate: string;
+    matches: string[];
+  } | null;
+
+  function completionFor(value: string): Completion {
+    let prefix = "";
+    let token = value;
+    let candidates: string[] | null = null;
+
+    if (!value.includes(" ")) {
+      candidates = Object.keys(commands);
+    } else {
+      const fileMatch = value.match(/^(cat)\s+(\S*)$/);
+      if (fileMatch) {
+        token = fileMatch[2];
+        prefix = value.slice(0, value.length - token.length);
+        candidates = CAT_FILES;
+      }
+    }
+
+    if (!candidates || !token) return null;
+
+    const lowerToken = token.toLowerCase();
+    const matches = candidates.filter((candidate) =>
+      candidate.toLowerCase().startsWith(lowerToken)
+    );
+    const candidate =
+      matches.find((match) => match.toLowerCase() !== lowerToken) || "";
+
+    return { prefix, token, candidate, matches };
+  }
+
+  function suggest() {
+    const completion = completionFor(kbd.value);
+    ghost.textContent = completion?.candidate
+      ? completion.candidate.slice(completion.token.length)
+      : "";
+  }
+
+  function acceptSuggestion() {
+    if (!ghost.textContent) return false;
+    const completion = completionFor(kbd.value);
+    if (!completion?.candidate) return false;
+
+    setInput(completion.prefix + completion.candidate);
+    caretEnd();
+    suggest();
+    return true;
+  }
+
+  function setInput(v: string) {
+    kbd.value = v;
+    typed.textContent = v;
+  }
+  function caretEnd() {
+    try {
+      kbd.setSelectionRange(kbd.value.length, kbd.value.length);
+    } catch {}
+  }
+
+  function run(raw: string) {
+    line(PROMPT + esc(raw));
+    const cmd = raw.trim();
+    if (cmd) {
+      HIST.push(cmd);
+      const parts = cmd.split(/\s+/);
+      const name = parts[0].toLowerCase();
+      const rest = cmd.slice(parts[0].length).trim();
+      const fn = commands[name];
+      if (fn) printLines(fn(parts.slice(1), rest));
+      else
+        line(
+          `<span class='err'>command not found: ${esc(name)}</span> — try <span class='a'>help</span>`
+        );
+    }
+    hi = HIST.length;
+    setInput("");
+    ghost.textContent = "";
+    scrollDown();
+  }
+
+  kbd.addEventListener("input", () => {
+    typed.textContent = kbd.value;
+    suggest();
+  });
+  kbd.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      ghost.textContent = "";
+      run(kbd.value);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (HIST.length) {
+        hi = Math.max(0, hi - 1);
+        setInput(HIST[hi] || "");
+        caretEnd();
+        suggest();
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (HIST.length) {
+        hi = Math.min(HIST.length, hi + 1);
+        setInput(HIST[hi] || "");
+        caretEnd();
+        suggest();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      ghost.textContent = "";
+    } else if (
+      e.key === "Tab" ||
+      (e.key === "ArrowRight" && kbd.selectionStart === kbd.value.length)
+    ) {
+      if (acceptSuggestion()) {
+        e.preventDefault();
+        return;
+      }
+      if (e.key === "ArrowRight") return;
+
+      e.preventDefault();
+      const completion = completionFor(kbd.value);
+      if (!completion) return;
+      if (completion.matches.length === 1) {
+        setInput(completion.prefix + completion.matches[0]);
+        caretEnd();
+        suggest();
+      } else if (completion.matches.length > 1) {
+        line(PROMPT + esc(kbd.value));
+        line(completion.matches.join("   "));
+        scrollDown();
+      }
+    }
+  });
+
+  const focusKbd = () => kbd.focus({ preventScroll: true });
+  view.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).tagName === "A") return;
+    if (!String(window.getSelection())) focusKbd();
+  });
+
+  // boot
+  focusKbd();
+</script>

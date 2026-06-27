@@ -1,0 +1,19 @@
+---
+import Base from "../layouts/Base.astro";
+import Scene from "../components/Scene.astro";
+import Terminal from "../components/Terminal.astro";
+
+// NOTE: confirm this is the right GitHub handle — inferred from git config.
+const github = "https://github.com/clssck";
+const name = "János Földvárszki";
+---
+
+<Base
+  title="János Földvárszki — I like computers"
+  description="The personal site of János Földvárszki. I like computers — say hi on GitHub."
+>
+  <Scene />
+  <main class="shell">
+    <Terminal github={github} name={name} />
+  </main>
+</Base>

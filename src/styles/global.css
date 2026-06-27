@@ -1,0 +1,485 @@
+/* ============================================================
+   Reset + tokens
+   ============================================================ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #050609;
+  --fg: #eef2f0;
+  --muted: #8b97a1;
+  --faint: rgba(255, 255, 255, 0.45);
+
+  --teal: #5eead4;
+  --violet: #b79cf6;
+  --amber: #ffc879;
+  --red: #ff7a7a;
+
+  --term-bg: rgba(10, 14, 18, 0.5);
+  --term-line: rgba(255, 255, 255, 0.12);
+
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo,
+    Consolas, "Liberation Mono", monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial,
+    sans-serif;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  color-scheme: dark;
+  overflow: hidden;
+}
+
+body {
+  min-height: 100svh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+a {
+  color: var(--teal);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in oklab, var(--teal) 35%, transparent);
+  transition: color 0.15s, border-color 0.15s;
+}
+a:hover {
+  color: #fff;
+  border-color: #fff;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--teal) 35%, transparent);
+  color: #fff;
+}
+
+/* ============================================================
+   Background diorama — pop-up book with 3D parallax layers
+   ============================================================ */
+.scene {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  perspective: 900px;
+  perspective-origin: 50% 45%;
+  background: radial-gradient(
+    125% 95% at 50% 36%,
+    #3c1836 0%,
+    #271031 34%,
+    #0c0714 72%,
+    #050308 100%
+  );
+}
+
+.diorama {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.layer {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 152%;
+  height: 152%;
+  transform: translate(-50%, -50%) translateZ(var(--z, 0px));
+}
+.layer canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* overhead canopy silhouettes (far, soft) */
+.canopy {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 162%;
+  transform: translate(-50%, -34%) translateZ(-130px);
+  filter: blur(3px);
+  opacity: 0.92;
+}
+.canopy svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* foreground leaves — depth-of-field blur, pop forward */
+.leaf {
+  position: absolute;
+  width: 44vmax;
+  height: 44vmax;
+}
+.leaf svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  transform-origin: 60% 5%;
+  animation: leafsway 8s ease-in-out infinite;
+}
+.leaf--bl {
+  left: -13vmax;
+  bottom: -14vmax;
+  transform: translateZ(-18px) rotate(16deg);
+  filter: blur(8px) brightness(0.72);
+}
+.leaf--br {
+  right: -13vmax;
+  bottom: -15vmax;
+  transform: translateZ(155px) rotate(-24deg) scaleX(-1);
+  filter: blur(6px) brightness(0.85);
+}
+.leaf--br svg {
+  animation-duration: 10s;
+  animation-delay: -3s;
+}
+.leaf--tl {
+  left: -15vmax;
+  top: -17vmax;
+  width: 34vmax;
+  height: 34vmax;
+  transform: translateZ(55px) rotate(166deg);
+  filter: blur(9px) brightness(0.7);
+  opacity: 0.85;
+}
+.leaf--tl svg {
+  animation-duration: 13s;
+  animation-delay: -5s;
+}
+
+.grain {
+  position: absolute;
+  inset: -50%;
+  width: 200%;
+  height: 200%;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    130% 100% at 50% 46%,
+    transparent 46%,
+    rgba(0, 0, 0, 0.64) 100%
+  );
+}
+
+/* focal character — Russian Blue cat (parallaxes with the diorama) */
+.cat {
+  position: absolute;
+  left: clamp(0px, 1.5vw, 36px);
+  bottom: -1vh;
+  height: clamp(240px, 42vh, 470px);
+  transform: translateZ(40px);
+  will-change: transform;
+}
+.cat__img {
+  height: 100%;
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 24px 26px rgba(0, 0, 0, 0.55));
+}
+.thread {
+  position: absolute;
+  top: 0;
+  left: 12%;
+  height: 65%;
+  width: 56px;
+  transform-origin: top center;
+  animation: threadswing 5.5s ease-in-out infinite;
+  z-index: 1;
+}
+.thread__line {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: calc(100% - 44px);
+  background: linear-gradient(#d8b487, #b88d63);
+  border-radius: 2px;
+}
+.thread__ball {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 50px;
+  height: 50px;
+  filter: drop-shadow(0 5px 6px rgba(0, 0, 0, 0.45));
+  pointer-events: auto;
+  cursor: pointer;
+}
+.thread__ball svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+@keyframes threadswing {
+  0%, 100% { transform: rotate(-0.8deg); }
+  50% { transform: rotate(0.8deg); }
+}
+@keyframes threadBounce {
+  0% { transform: rotate(0deg); }
+  12% { transform: rotate(4deg); }
+  30% { transform: rotate(-3deg); }
+  48% { transform: rotate(2deg); }
+  66% { transform: rotate(-1.2deg); }
+  82% { transform: rotate(0.6deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes ballSquash {
+  0% { transform: translateX(-50%) scale(1, 1); }
+  25% { transform: translateX(-50%) scale(1.25, 0.78); }
+  50% { transform: translateX(-50%) scale(0.9, 1.12); }
+  75% { transform: translateX(-50%) scale(1.06, 0.96); }
+  100% { transform: translateX(-50%) scale(1, 1); }
+}
+.thread.bounce {
+  animation: threadBounce 1.3s cubic-bezier(0.25, 0.6, 0.3, 1) both;
+}
+.thread.bounce .thread__ball {
+  animation: ballSquash 0.5s ease-out;
+}
+@media (max-width: 560px) {
+  .cat { height: clamp(150px, 26vh, 230px); left: -14px; bottom: -1vh; }
+  .thread { width: 46px; }
+  .thread__ball { width: 40px; height: 40px; }
+  .term { background: rgba(10, 14, 18, 0.62); }
+}
+
+/* ============================================================
+   Layout
+   ============================================================ */
+.shell {
+  position: relative;
+  z-index: 2;
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: clamp(0.9rem, 3vw, 2rem);
+  pointer-events: none;
+}
+
+/* ============================================================
+   Terminal
+   ============================================================ */
+.termwrap {
+  display: grid;
+  justify-items: center;
+  gap: 0.9rem;
+  width: min(94vw, 720px);
+}
+
+.term {
+  width: 100%;
+  pointer-events: auto;
+  height: min(70svh, 540px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: var(--term-bg);
+  border: 1px solid var(--term-line);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 40px 90px -30px rgba(0, 0, 0, 0.85),
+    0 0 0 1px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.term__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--term-line);
+  background: rgba(255, 255, 255, 0.025);
+  flex: 0 0 auto;
+}
+.dots {
+  display: inline-flex;
+  gap: 0.42rem;
+}
+.dots i {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #3a4047;
+}
+.dots i:nth-child(1) { background: #ff5f57; }
+.dots i:nth-child(2) { background: #febc2e; }
+.dots i:nth-child(3) { background: #28c840; }
+.term__title {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--faint);
+  letter-spacing: 0.02em;
+}
+
+.term__screen {
+  flex: 1 1 auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.9rem 1rem 1.1rem;
+  font-family: var(--mono);
+  font-size: clamp(0.82rem, 2.4vw, 0.92rem);
+  line-height: 1.65;
+  color: var(--fg);
+  cursor: text;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.term__screen::-webkit-scrollbar { width: 8px; }
+.term__screen::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+}
+
+.ln {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ln + .ln { margin-top: 0.05rem; }
+
+/* prompt + input line */
+.term__line {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.prompt { margin-right: 0.5ch; }
+.prompt .u { color: var(--teal); }
+.prompt .h { color: var(--violet); }
+.prompt .dim { color: var(--faint); }
+
+#typed { color: var(--fg); }
+.cursor {
+  display: inline-block;
+  width: 0.6ch;
+  height: 1.05em;
+  transform: translateY(0.18em);
+  background: var(--teal);
+  margin-left: 1px;
+  animation: curBlink 1.05s steps(1) infinite;
+}
+#kbd {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: transparent;
+}
+
+/* content classes used inside injected output */
+.a { color: var(--teal); }
+.k { color: var(--amber); }
+.dim { color: var(--faint); }
+.err { color: var(--red); }
+b, .b { color: #fff; font-weight: 600; }
+.ghost {
+  color: var(--faint);
+  opacity: 0.6;
+}
+.grad {
+  background: linear-gradient(100deg, var(--teal), var(--violet) 45%, var(--amber) 95%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 700;
+  animation: sheen 8s var(--ease) infinite;
+}
+kbd {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  padding: 0.05em 0.4em;
+  border: 1px solid var(--term-line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--fg);
+}
+
+.hint {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--faint);
+  text-align: center;
+}
+.hint .a { color: var(--teal); }
+
+/* ============================================================
+   Animation
+   ============================================================ */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  animation: rise 0.9s var(--ease) forwards;
+}
+.reveal[data-d="2"] { animation-delay: 0.1s; }
+.reveal[data-d="3"] { animation-delay: 0.3s; }
+
+@keyframes rise {
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes curBlink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+@keyframes sheen {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes leafsway {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  50% { transform: rotate(2.5deg) translateY(-7px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .reveal { opacity: 1; transform: none; }
+  .cursor { animation: none; }
+  /* the bounce is user-triggered feedback (a click), so allow it even here */
+  .thread.bounce {
+    animation: threadBounce 1.3s cubic-bezier(0.25, 0.6, 0.3, 1) both !important;
+  }
+  .thread.bounce .thread__ball {
+    animation: ballSquash 0.5s ease-out !important;
+  }
+}
