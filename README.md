@@ -56,13 +56,17 @@ public/
 
 ## Deploy
 
-Static site: `bun run build` writes plain files to `dist/` — serve that folder
-with any static web server.
+Static site: `bun run build` writes plain files to `dist/`.
+
+**Docker (EasyPanel / any Docker host):** the repo ships a `Dockerfile` that
+builds with Bun and serves `dist/` via nginx on port 80 — EasyPanel builds it
+straight from the repo, no config needed.
+
+**Manual:** build and copy the static output anywhere:
 
 ```sh
 bun install && bun run build      # -> dist/
-# then copy dist/ to the VPS and point the web root at it, e.g. nginx:
-#   root /var/www/janos;  try_files $uri $uri/ =404;
+# copy dist/ to the web root, e.g. nginx: root /var/www/janos; try_files $uri $uri/ =404;
 ```
 
 Served at **ennivalo.com** and **kulcsly.uk**. Canonical / social-share URL is
