@@ -49,10 +49,14 @@ src/
 ├── components/Terminal.astro # interactive terminal + command registry
 └── styles/global.css        # theme tokens, layout, terminal styling
 public/
+├── favicon.ico              # legacy browser fallback
 ├── favicon.svg              # JF monogram
+├── robots.txt               # crawler policy + sitemap discovery
 ├── og.png                   # social card (1200x630)
 └── cat.webp                 # focal Russian Blue cat (transparent)
 ```
+
+`@astrojs/sitemap` generates `sitemap-index.xml` and the route sitemap during the production build.
 
 ## Deploy
 

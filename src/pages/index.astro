@@ -3,7 +3,6 @@ import Base from "../layouts/Base.astro";
 import Scene from "../components/Scene.astro";
 import Terminal from "../components/Terminal.astro";
 
-// NOTE: confirm this is the right GitHub handle — inferred from git config.
 const github = "https://github.com/clssck";
 const name = "János Földvárszki";
 ---
@@ -14,6 +13,15 @@ const name = "János Földvárszki";
 >
   <Scene />
   <main class="shell">
+    <h1 class="sr-only">János Földvárszki — computer enjoyer</h1>
+    <p class="sr-only">
+      Personal website of János Földvárszki, built as an interactive terminal.
+    </p>
+    <noscript>
+      <p class="noscript">
+        This interactive terminal requires JavaScript. You can also find János on <a href={github}>GitHub</a>.
+      </p>
+    </noscript>
     <Terminal github={github} name={name} />
   </main>
 </Base>

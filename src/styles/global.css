@@ -46,6 +46,28 @@ body {
   overflow: hidden;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.noscript {
+  max-width: 36rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--term-line);
+  border-radius: 10px;
+  background: rgba(10, 14, 18, 0.8);
+  text-align: center;
+  pointer-events: auto;
+}
+
 a {
   color: var(--teal);
   text-decoration: none;
@@ -309,6 +331,10 @@ a:hover {
     0 0 0 1px rgba(0, 0, 0, 0.4);
   overflow: hidden;
 }
+.term:focus-within {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+}
 
 .term__bar {
   display: flex;
@@ -475,7 +501,7 @@ kbd {
   }
   .reveal { opacity: 1; transform: none; }
   .cursor { animation: none; }
-  /* the bounce is user-triggered feedback (a click), so allow it even here */
+  /* User-triggered feedback is preserved even when ambient motion is reduced. */
   .thread.bounce {
     animation: threadBounce 1.3s cubic-bezier(0.25, 0.6, 0.3, 1) both !important;
   }

@@ -13,15 +13,15 @@ const { github, name } = Astro.props;
       <span class="term__title">visitor@janos — zsh</span>
     </div>
     <div class="term__screen" id="screen">
-      <div id="out"></div>
+      <div id="out" role="log" aria-live="polite" aria-relevant="additions"></div>
       <div class="term__line" id="inputline"><span class="prompt"><span class="u"
             >visitor</span><span class="dim">@</span><span class="h">janos</span><span
             class="dim">:~$</span></span><span id="typed"></span><span class="cursor"
         ></span><span class="ghost" id="ghost"></span><input id="kbd" type="text" autocomplete="off" autocapitalize="off"
-          autocorrect="off" spellcheck="false" aria-label="terminal input" /></div>
+          autocorrect="off" spellcheck="false" aria-label="Terminal command" aria-describedby="terminal-hint" /></div>
     </div>
   </div>
-  <p class="hint">psst — it's a real terminal. type <span class="a">help</span> and hit <kbd>↵</kbd></p>
+  <p class="hint" id="terminal-hint">click the terminal, type <span class="a">help</span>, and hit <kbd>↵</kbd></p>
 </section>
 
 <script>
@@ -289,6 +289,4 @@ const { github, name } = Astro.props;
     if (!String(window.getSelection())) focusKbd();
   });
 
-  // boot
-  focusKbd();
 </script>

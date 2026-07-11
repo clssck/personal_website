@@ -15,6 +15,7 @@ const canonical = Astro.site
   ? new URL(Astro.url.pathname, Astro.site).href
   : Astro.url.pathname;
 const ogImage = Astro.site ? new URL("/og.png", Astro.site).href : "/og.png";
+const ogImageAlt = `${title} — social preview`;
 ---
 
 <!doctype html>
@@ -22,6 +23,7 @@ const ogImage = Astro.site ? new URL("/og.png", Astro.site).href : "/og.png";
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="generator" content={Astro.generator} />
 
@@ -34,11 +36,16 @@ const ogImage = Astro.site ? new URL("/og.png", Astro.site).href : "/og.png";
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImage} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={ogImageAlt} />
     <meta property="og:url" content={canonical} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content={ogImageAlt} />
   </head>
   <body>
     <slot />
