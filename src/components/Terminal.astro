@@ -1,57 +1,88 @@
 ---
-interface Props {
-  github: string;
-  name: string;
-}
-const { github, name } = Astro.props;
+import { SITE, PROJECTS, ABOUT, projectUrl } from "../lib/profile";
+
+const reposDisplay = SITE.reposUrl.replace(/^https?:\/\//, "");
 ---
 
 <section class="termwrap reveal" data-d="2">
-  <div class="term" id="term" data-github={github} data-name={name}>
+  <div class="term" id="term">
     <div class="term__bar">
       <span class="dots"><i></i><i></i><i></i></span>
       <span class="term__title">visitor@janos — zsh</span>
     </div>
     <div class="term__screen" id="screen">
+      <header class="term__intro">
+        <h1 class="term__name"><span class="grad">{SITE.name}</span></h1>
+        <p class="term__tag"><span class="k">{SITE.role}</span> — {SITE.tagline}</p>
+        <nav class="term__links" aria-label="Shortcuts">
+          <a href="#about" data-cmd="about">about</a>
+          <a href="#projects" data-cmd="projects">projects</a>
+          <a href={SITE.reposUrl} data-cmd="repos" target="_blank" rel="noopener noreferrer">repos</a>
+          <a href={SITE.githubUrl} target="_blank" rel="noopener noreferrer">github</a>
+        </nav>
+        <details class="term__details" id="about">
+          <summary>about</summary>
+          {ABOUT.map((p) => <p>{p}</p>)}
+        </details>
+        <details class="term__details" id="projects">
+          <summary>projects</summary>
+          <ul>
+            {PROJECTS.map((p) => (
+              <li>
+                <a href={projectUrl(p.slug)} target="_blank" rel="noopener noreferrer">{p.name}</a>
+                <span> — {p.description}</span>
+              </li>
+            ))}
+          </ul>
+          <p>All public repos: <a href={SITE.reposUrl} target="_blank" rel="noopener noreferrer">{reposDisplay}</a></p>
+        </details>
+      </header>
       <div id="out" role="log" aria-live="polite" aria-relevant="additions"></div>
-      <div class="term__line" id="inputline"><span class="prompt"><span class="u"
-            >visitor</span><span class="dim">@</span><span class="h">janos</span><span
-            class="dim">:~$</span></span><span id="typed"></span><span class="cursor"
-        ></span><span class="ghost" id="ghost"></span><input id="kbd" type="text" autocomplete="off" autocapitalize="off"
-          autocorrect="off" spellcheck="false" aria-label="Terminal command" aria-describedby="terminal-hint" /></div>
+      <form class="term__line" id="inputline" autocomplete="off" novalidate>
+        <label class="prompt" for="cmd"><span class="u">visitor</span><span class="dim">@</span><span class="h">janos</span><span class="dim">:~$</span></label>
+        <span class="cmdwrap"><input id="cmd" name="cmd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" aria-label="Terminal command" aria-describedby="terminal-hint" /><span class="ghost" id="ghost" aria-hidden="true"></span></span>
+      </form>
     </div>
+    <div class="term__foot"><p class="hint" id="terminal-hint">psst — it's a real terminal. type <span class="a">help</span> and hit <kbd>↵</kbd></p></div>
   </div>
-  <p class="hint" id="terminal-hint">click the terminal, type <span class="a">help</span>, and hit <kbd>↵</kbd></p>
 </section>
 
 <script>
+  import { SITE, PROJECTS, ABOUT, SKILLS, projectUrl } from "../lib/profile";
+  import { loadRepos, FALLBACK_REPOS } from "../lib/github";
+  import {
+    completionFor,
+    shouldInterceptTab,
+    escapeHtml as esc,
+    own,
+    createHistory,
+  } from "../lib/terminal";
+
   const term = document.getElementById("term") as HTMLElement;
   const out = document.getElementById("out") as HTMLElement;
   const view = document.getElementById("screen") as HTMLElement;
-  const kbd = document.getElementById("kbd") as HTMLInputElement;
-  const typed = document.getElementById("typed") as HTMLElement;
+  const form = document.getElementById("inputline") as HTMLFormElement;
+  const kbd = document.getElementById("cmd") as HTMLInputElement;
   const ghost = document.getElementById("ghost") as HTMLElement;
-
-  const GITHUB = term.dataset.github || "https://github.com/clssck";
-  const NAME = term.dataset.name || "János Földvárszki";
 
   const PROMPT =
     '<span class="u">visitor</span><span class="dim">@</span><span class="h">janos</span><span class="dim">:~$</span>&nbsp;';
 
-  const esc = (s: string) =>
-    s.replace(/[&<>"']/g, (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!
-    );
+  const ghDisplay = SITE.githubUrl.replace(/^https?:\/\//, "");
+  const ghLink = `<a href="${SITE.githubUrl}" target="_blank" rel="noopener noreferrer">${esc(ghDisplay)}</a>`;
+  const ext = (url: string, text: string) =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`;
 
-  const ghLink = `<a href="${GITHUB}" target="_blank" rel="noopener noreferrer">${esc(
-    GITHUB.replace(/^https?:\/\//, "")
-  )}</a>`;
-
-  function line(html: string, cls?: string) {
+  function makeLine(html: string, cls?: string) {
     const d = document.createElement("div");
     d.className = "ln" + (cls ? " " + cls : "");
     d.innerHTML = html;
+    return d;
+  }
+  function line(html: string, cls?: string) {
+    const d = makeLine(html, cls);
     out.appendChild(d);
+    return d;
   }
   function printLines(arr: string[] | null) {
     if (!arr) return;
@@ -68,22 +99,93 @@ const { github, name } = Astro.props;
     "A good UI is like a joke — if you have to explain it, it isn't that good.",
   ];
 
-  const NEOFETCH = [
-    "<span class='a'>   ╭───────────╮ </span>  <span class='grad'>" + esc(NAME) + "</span>",
-    "<span class='a'>   │  ◠     ◠  │ </span>  <span class='dim'>────────────────</span>",
-    "<span class='a'>   │     ‿     │ </span>  <span class='k'>role  </span> computer enjoyer",
-    "<span class='a'>   ╰───────────╯ </span>  <span class='k'>stack </span> astro · ts · webgl",
-    "<span class='a'>      ║   ║      </span>  <span class='k'>site  </span> astro · static · no framework runtime",
-    "<span class='a'>   ═══╩═══╩═══   </span>  <span class='k'>github</span> " + ghLink,
+  const NEO_ART = [
+    "   ╭───────────╮ ",
+    "   │  ◠     ◠  │ ",
+    "   │     ‿     │ ",
+    "   ╰───────────╯ ",
+    "      ║   ║      ",
+    "   ═══╩═══╩═══   ",
+  ];
+  function neofetchBlock(): string {
+    const row = (k: string, v: string) =>
+      `<div class="neo__row"><dt>${k}</dt><dd>${v}</dd></div>`;
+    return (
+      `<div class="neo"><pre class="neo__art" aria-hidden="true">` +
+      esc(NEO_ART.join("\n")) +
+      `</pre><dl class="neo__kv">` +
+      row("who", `<span class="grad">${esc(SITE.name)}</span>`) +
+      row("role", esc(SITE.role)) +
+      row("stack", "astro · ts · css3d/canvas") +
+      row("site", "astro · static · no framework runtime") +
+      row("github", ghLink) +
+      `</dl></div>`
+    );
+  }
+
+  function repoLines(
+    repos: { name: string; url: string; description: string | null; language: string | null; archived: boolean; fork: boolean }[]
+  ): string[] {
+    const lines: string[] = [
+      `<span class="dim">${repos.length} public repos, most recently pushed first —</span>`,
+    ];
+    for (const r of repos) {
+      const flags =
+        (r.archived ? ` <span class="dim">[archived]</span>` : "") +
+        (r.fork ? ` <span class="dim">[fork]</span>` : "");
+      const lang = r.language ? ` <span class="dim">· ${esc(r.language)}</span>` : "";
+      lines.push(`▸ ${ext(r.url, `<b>${esc(r.name)}</b>`)}${flags}${lang}`);
+      lines.push(
+        r.description
+          ? `  ${esc(r.description)}`
+          : `  <span class="dim">(no description)</span>`
+      );
+    }
+    lines.push(
+      `<span class="dim">the full directory anytime:</span> ${ext(FALLBACK_REPOS, esc(FALLBACK_REPOS.replace(/^https?:\/\//, "")))}`
+    );
+    return lines;
+  }
+
+  type Cmd = (
+    args: string[],
+    rest: string,
+    ctx: { id: number }
+  ) => string[] | null;
+
+  const aboutLines = (): string[] => [
+    ...ABOUT,
+    "",
+    `For the greatest hits: <span class="a">projects</span>.`,
+  ];
+  const skillsLines = (): string[] => [
+    "things i work with —",
+    ...SKILLS.map((s) => `  ${s}`),
+    "  <span class='dim'>curiosity &gt; frameworks</span>",
+  ];
+  const projectsLines = (): string[] => [
+    "the curated five —",
+    ...PROJECTS.flatMap((p) => [
+      `  ▸ ${ext(projectUrl(p.slug), `<b>${esc(p.name)}</b>`)} — ${esc(p.description)}`,
+    ]),
+    "",
+    `everything else lives in <span class="a">repos</span>.`,
   ];
 
-  type Cmd = (args: string[], rest: string) => string[] | null;
+  // Async output ownership: each run gets a token; results print only while
+  // their token is still pending, so `clear` during a fetch drops the
+  // late result instead of resurrecting it.
+  let runSeq = 0;
+  const pending = new Set<number>();
+
   const commands: Record<string, Cmd> = {
     help: () => [
       "available commands —",
       "  <span class='a'>whoami</span>     who am i",
       "  <span class='a'>about</span>      a little more",
-      "  <span class='a'>skills</span>     what i tinker with",
+      "  <span class='a'>skills</span>     what i work with",
+      "  <span class='a'>projects</span>   the curated five",
+      "  <span class='a'>repos</span>      every public repo, live from github",
       "  <span class='a'>github</span>     open my github",
       "  <span class='a'>neofetch</span>   the rundown",
       "  <span class='a'>ls</span> · <span class='a'>cat</span>   nose around files",
@@ -92,39 +194,66 @@ const { github, name } = Astro.props;
       "<span class='dim'>↑/↓ history · tab completes</span>",
     ],
     whoami: () => [
-      `<span class='grad'>${esc(NAME)}</span>`,
-      "I like <b>computers</b>.",
+      `<span class='grad'>${esc(SITE.name)}</span> — ${esc(SITE.role)}`,
+      esc(SITE.tagline),
       "",
       `→ ${ghLink}`,
     ],
-    about: () => [
-      "Hi — I'm János.",
-      "I like building things with computers and figuring out how they work.",
-      "This little corner of the web is one of those things.",
-      "",
-      "A blog and some projects are on the way. For now, try <span class='a'>github</span>.",
-    ],
-    skills: () => [
-      "things i play with —",
-      "  the web · typescript · a bit of everything",
-      "  <span class='dim'>curiosity &gt; frameworks</span>",
-    ],
+    about: () => aboutLines(),
+    skills: () => skillsLines(),
+    projects: () => projectsLines(),
+    repos: (_a, _r, ctx) => {
+      const loading = line(`<span class="dim">fetching public repos from GitHub …</span>`);
+      scrollDown();
+      const id = ctx.id;
+      pending.add(id);
+      loadRepos().then((res) => {
+        if (!pending.has(id)) return; // cleared while pending — stay silent
+        pending.delete(id);
+        const result = !res.ok
+          ? [
+              `<span class="err">${esc(res.message)}</span>`,
+              `browse them directly: ${ext(res.fallback, esc(res.fallback.replace(/^https?:\/\//, "")))}`,
+            ]
+          : res.repos.length === 0
+            ? [
+                "no public repos on GitHub right now —",
+                `meanwhile, the curated set is one <span class="a">projects</span> away.`,
+              ]
+            : repoLines(res.repos);
+        // replace the loading placeholder in place, so the result stays
+        // beside its command even if later commands ran while pending
+        const frag = document.createDocumentFragment();
+        for (const html of result) frag.appendChild(makeLine(html));
+        out.insertBefore(frag, loading);
+        loading.remove();
+        scrollDown();
+      });
+      return null;
+    },
     github: () => {
-      window.open(GITHUB, "_blank", "noopener");
+      window.open(SITE.githubUrl, "_blank", "noopener");
       return [`opening ${ghLink} …`];
     },
-    ls: () => ["about.txt   skills.txt   github.url   <span class='a'>secrets/</span>"],
+    ls: () => [
+      "about.txt   skills.txt   projects.url   github.url   <span class='a'>secrets/</span>",
+    ],
     cat: (args) => {
       const f = args[0];
       if (!f) return ["usage: cat <file>"];
       const files: Record<string, string[]> = {
-        "about.txt": commands.about([], ""),
-        "skills.txt": commands.skills([], ""),
-        "github.url": [GITHUB],
+        "about.txt": aboutLines(),
+        "skills.txt": skillsLines(),
+        "projects.url": PROJECTS.map((p) => projectUrl(p.slug)),
+        "github.url": [SITE.githubUrl],
       };
-      return files[f] || [`<span class='err'>cat: ${esc(f)}: No such file or directory</span>`];
+      return (
+        own(files, f) || [
+          `<span class='err'>cat: ${esc(f)}: No such file or directory</span>`,
+        ]
+      );
     },
-    neofetch: () => NEOFETCH,
+    neofetch: () => [neofetchBlock()],
     echo: (_a, rest) => [esc(rest || "")],
     date: () => [new Date().toString()],
     pwd: () => ["/home/janos"],
@@ -134,74 +263,51 @@ const { github, name } = Astro.props;
     ],
     secrets: () => ["<span class='dim'>nice try — nothing here but stardust.</span>"],
     history: () =>
-      HIST.length ? HIST.map((h, i) => `  ${i + 1}  ${esc(h)}`) : ["(empty)"],
+      hist.length
+        ? Array.from(
+            { length: hist.length },
+            (_, i) => `  ${i + 1}  ${esc(hist.at(i))}`
+          )
+        : ["(empty)"],
     clear: () => {
+      pending.clear();
       out.innerHTML = "";
       return null;
     },
   };
 
-  const HIST: string[] = [];
+  const COMMAND_NAMES = Object.keys(commands);
+  const CAT_FILES = ["about.txt", "skills.txt", "projects.url", "github.url"];
+
+  const hist = createHistory();
   let hi = 0;
+  let draft = "";
 
-  const CAT_FILES = ["about.txt", "skills.txt", "github.url"];
-
-  type Completion = {
-    prefix: string;
-    token: string;
-    candidate: string;
-    matches: string[];
-  } | null;
-
-  function completionFor(value: string): Completion {
-    let prefix = "";
-    let token = value;
-    let candidates: string[] | null = null;
-
-    if (!value.includes(" ")) {
-      candidates = Object.keys(commands);
-    } else {
-      const fileMatch = value.match(/^(cat)\s+(\S*)$/);
-      if (fileMatch) {
-        token = fileMatch[2];
-        prefix = value.slice(0, value.length - token.length);
-        candidates = CAT_FILES;
-      }
-    }
-
-    if (!candidates || !token) return null;
-
-    const lowerToken = token.toLowerCase();
-    const matches = candidates.filter((candidate) =>
-      candidate.toLowerCase().startsWith(lowerToken)
-    );
-    const candidate =
-      matches.find((match) => match.toLowerCase() !== lowerToken) || "";
-
-    return { prefix, token, candidate, matches };
+  function syncWidth() {
+    kbd.style.width = Math.max(2, kbd.value.length + 1) + "ch";
   }
-
-  function suggest() {
-    const completion = completionFor(kbd.value);
-    ghost.textContent = completion?.candidate
-      ? completion.candidate.slice(completion.token.length)
-      : "";
+  function updateGhost() {
+    const completion = completionFor(kbd.value, COMMAND_NAMES, CAT_FILES);
+    const capped = kbd.scrollWidth > kbd.clientWidth + 1;
+    ghost.textContent =
+      !capped && completion?.candidate
+        ? completion.candidate.slice(completion.token.length)
+        : "";
   }
 
   function acceptSuggestion() {
     if (!ghost.textContent) return false;
-    const completion = completionFor(kbd.value);
+    const completion = completionFor(kbd.value, COMMAND_NAMES, CAT_FILES);
     if (!completion?.candidate) return false;
-
     setInput(completion.prefix + completion.candidate);
     caretEnd();
-    suggest();
+    updateGhost();
     return true;
   }
 
   function setInput(v: string) {
     kbd.value = v;
-    typed.textContent = v;
+    syncWidth();
   }
   function caretEnd() {
     try {
@@ -211,73 +317,84 @@ const { github, name } = Astro.props;
 
   function run(raw: string) {
     line(PROMPT + esc(raw));
-    const cmd = raw.trim();
-    if (cmd) {
-      HIST.push(cmd);
-      const parts = cmd.split(/\s+/);
+    const cmdText = raw.trim();
+    const id = ++runSeq;
+    if (cmdText) {
+      hist.push(cmdText);
+      const parts = cmdText.split(/\s+/);
       const name = parts[0].toLowerCase();
-      const rest = cmd.slice(parts[0].length).trim();
-      const fn = commands[name];
-      if (fn) printLines(fn(parts.slice(1), rest));
+      const rest = cmdText.slice(parts[0].length).trim();
+      const fn = own(commands, name);
+      if (fn) printLines(fn(parts.slice(1), rest, { id }));
       else
         line(
           `<span class='err'>command not found: ${esc(name)}</span> — try <span class='a'>help</span>`
         );
     }
-    hi = HIST.length;
+    draft = "";
+    hi = hist.length;
     setInput("");
     ghost.textContent = "";
     scrollDown();
   }
 
   kbd.addEventListener("input", () => {
-    typed.textContent = kbd.value;
-    suggest();
+    syncWidth();
+    updateGhost();
+  });
+  form.addEventListener("submit", (e) => {
+    // Mobile keyboards submit the form ("go") — same as Enter.
+    e.preventDefault();
+    ghost.textContent = "";
+    run(kbd.value);
   });
   kbd.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
+      if (e.isComposing) return;
       ghost.textContent = "";
       run(kbd.value);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      if (HIST.length) {
-        hi = Math.max(0, hi - 1);
-        setInput(HIST[hi] || "");
+      if (hist.length) {
+        if (hi === hist.length) draft = kbd.value;
+        hi = hist.step(hi, -1);
+        setInput(hist.at(hi));
         caretEnd();
-        suggest();
+        updateGhost();
       }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (HIST.length) {
-        hi = Math.min(HIST.length, hi + 1);
-        setInput(HIST[hi] || "");
+      if (hist.length) {
+        hi = hist.step(hi, 1);
+        setInput(hi === hist.length ? draft : hist.at(hi));
         caretEnd();
-        suggest();
+        updateGhost();
       }
     } else if (e.key === "Escape") {
       e.preventDefault();
       ghost.textContent = "";
     } else if (
-      e.key === "Tab" ||
-      (e.key === "ArrowRight" && kbd.selectionStart === kbd.value.length)
+      e.key === "ArrowRight" &&
+      !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey &&
+      kbd.selectionStart === kbd.value.length
     ) {
-      if (acceptSuggestion()) {
-        e.preventDefault();
-        return;
-      }
-      if (e.key === "ArrowRight") return;
-
+      if (acceptSuggestion()) e.preventDefault();
+    } else if (e.key === "Tab") {
+      // Shift+Tab, modifiers, IME, empty/unmatched/exact input all escape
+      // to native focus order — Tab is only ours when it completes or lists.
+      if (!shouldInterceptTab(e, kbd.value, COMMAND_NAMES, CAT_FILES)) return;
       e.preventDefault();
-      const completion = completionFor(kbd.value);
+      if (acceptSuggestion()) return;
+      const completion = completionFor(kbd.value, COMMAND_NAMES, CAT_FILES);
       if (!completion) return;
       if (completion.matches.length === 1) {
         setInput(completion.prefix + completion.matches[0]);
         caretEnd();
-        suggest();
+        updateGhost();
       } else if (completion.matches.length > 1) {
         line(PROMPT + esc(kbd.value));
-        line(completion.matches.join("   "));
+        line(esc(completion.matches.join("   ")));
         scrollDown();
       }
     }
@@ -285,8 +402,24 @@ const { github, name } = Astro.props;
 
   const focusKbd = () => kbd.focus({ preventScroll: true });
   view.addEventListener("click", (e) => {
-    if ((e.target as HTMLElement).tagName === "A") return;
+    // interactive targets keep their own behavior — and never summon keyboards
+    if ((e.target as HTMLElement).closest("a,button,summary,input,select,textarea,details"))
+      return;
     if (!String(window.getSelection())) focusKbd();
   });
 
+  // Shortcut links double as command runners under JS — without stealing
+  // focus (no forced mobile keyboard); without JS they're plain anchors.
+  document.querySelectorAll<HTMLAnchorElement>("a[data-cmd]").forEach((a) => {
+    a.addEventListener("click", (e) => {
+      // modified/non-primary clicks stay native (new tab, jump link, …)
+      if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.button !== 0)
+        return;
+      e.preventDefault();
+      if (a.dataset.cmd) run(a.dataset.cmd);
+    });
+  });
+
+  term.dataset.ready = "true";
+  syncWidth();
 </script>

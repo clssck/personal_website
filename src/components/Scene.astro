@@ -54,14 +54,22 @@
     </svg></div>
   </div>
 
-  <div class="thread" aria-hidden="true">
-    <span class="thread__line"></span>
-    <span class="thread__ball">
-      <svg viewBox="0 0 56 56">
-        <circle cx="28" cy="28" r="24" fill="#e0674f" />
-        <path d="M8 22C22 14 36 18 47 30M7 34C20 46 38 42 49 30M18 9C20 30 26 48 19 53M38 10C36 31 31 49 38 54" fill="none" stroke="#b8412f" stroke-width="2" stroke-linecap="round" opacity="0.85" />
-      </svg>
-    </span>
+  <!-- The yarn hangs on a full-viewport 3D twin layer that mirrors the diorama's
+       tilt transform (same box, same .scene perspective), anchored to the cat's
+       plane (translateZ(40px), matching .cat in global.css) — so the ball stays
+       glued to the paw by transform alone, with no per-frame measurements. -->
+  <div id="threadLayer" style="position:absolute;inset:0;transform-style:preserve-3d">
+    <div id="threadAnchor" style="position:absolute;top:0;left:0;transform:translateZ(40px)">
+      <div class="thread" aria-hidden="true">
+        <span class="thread__line"></span>
+        <span class="thread__ball">
+          <svg viewBox="0 0 56 56">
+            <circle cx="28" cy="28" r="24" fill="#e0674f" />
+            <path d="M8 22C22 14 36 18 47 30M7 34C20 46 38 42 49 30M18 9C20 30 26 48 19 53M38 10C36 31 31 49 38 54" fill="none" stroke="#b8412f" stroke-width="2" stroke-linecap="round" opacity="0.85" />
+          </svg>
+        </span>
+      </div>
+    </div>
   </div>
 
   <div class="grain"></div>
@@ -71,9 +79,19 @@
   const diorama = document.getElementById("diorama") as HTMLElement;
   const cv = document.getElementById("fx") as HTMLCanvasElement;
   const fx = cv.getContext("2d")!;
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const threadLayer = document.getElementById("threadLayer") as HTMLElement;
+  const thread = document.querySelector(".thread") as HTMLElement | null;
+  const catImg = document.querySelector(".cat__img") as HTMLImageElement | null;
+  const threadBall = thread?.querySelector(".thread__ball") as HTMLElement | null;
+
+  // Reduced motion is live: a change event freezes or restores the loop.
+  const reduceMql = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let reduce = reduceMql.matches;
+
+  const PAW_X = 0.84, PAW_Y = 0.17; // raised-paw position within the cat image
 
   let W = 0, H = 0, CW = 0, CH = 0, DPR = 1;
+  let threadW = 56, ballH = 50;
 
   type P = { x: number; y: number; t: number; s: number; a: number; vx: number; vy: number; ph: number; c: string };
   let parts: P[] = [];
@@ -109,6 +127,26 @@
     cv.height = Math.floor(CH * DPR);
     fx.setTransform(DPR, 0, 0, DPR, 0, 0);
     seed();
+    measure();
+  }
+
+  // Paw anchor in diorama-local coordinates. offset* describe the untransformed
+  // layout box, so this is exact even while the diorama (and the twin layer) is
+  // tilted; it runs only on load/resize, never per frame.
+  function measure() {
+    if (!catImg || !thread) return;
+    let el: HTMLElement | null = catImg, ox = 0, oy = 0;
+    while (el && el !== diorama) {
+      ox += el.offsetLeft;
+      oy += el.offsetTop;
+      el = el.offsetParent as HTMLElement | null;
+    }
+    const pawX = ox + catImg.offsetWidth * PAW_X;
+    const pawY = oy + catImg.offsetHeight * PAW_Y;
+    threadW = thread.offsetWidth || 56;
+    ballH = threadBall ? threadBall.offsetHeight : 50;
+    thread.style.left = (pawX - threadW / 2).toFixed(1) + "px";
+    thread.style.height = (pawY + ballH / 2).toFixed(1) + "px";
   }
 
   function cross(x: number, y: number, s: number) {
@@ -132,11 +170,12 @@
     fx.fill();
   }
 
-  function draw(time: number) {
+  function draw(time: number, dt = 1) {
     fx.clearRect(0, 0, CW, CH);
     for (const p of parts) {
       if (!reduce) {
-        p.x += p.vx; p.y += p.vy;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
         if (p.y < -12) p.y = CH + 12;
         if (p.x < -12) p.x = CW + 12; else if (p.x > CW + 12) p.x = -12;
       }
@@ -156,49 +195,64 @@
 
   // pointer + idle parallax tilt
   let mnx = 0, mny = 0, mx = 0, my = 0;
-  if (!reduce) {
-    window.addEventListener("pointermove", (e) => {
-      mnx = (e.clientX / W) * 2 - 1;
-      mny = (e.clientY / H) * 2 - 1;
-    }, { passive: true });
-  }
+  window.addEventListener("pointermove", (e) => {
+    mnx = (e.clientX / W) * 2 - 1;
+    mny = (e.clientY / H) * 2 - 1;
+  }, { passive: true });
 
   const start = performance.now();
-  function tilt(t: number) {
+
+  // The yarn hangs on a full-viewport 3D sibling that mirrors the diorama's
+  // transform, so both planes rotate as one and the ball stays on the paw by
+  // transform alone — no per-frame measurements.
+  const STATIC_TILT = "rotateY(3deg)";
+  function applyTilt(t: string) {
+    diorama.style.transform = t;
+    threadLayer.style.transform = t;
+  }
+  function tilt(t: number, dt: number) {
     const idleX = 0.16 * Math.sin(t * 0.00025);
     const idleY = 0.12 * Math.cos(t * 0.0002);
     const tx = mnx * 0.82 + idleX;
     const ty = mny * 0.82 + idleY;
-    mx += (tx - mx) * 0.06;
-    my += (ty - my) * 0.06;
-    diorama.style.transform =
-      `rotateX(${(-my * 4).toFixed(2)}deg) rotateY(${(mx * 7).toFixed(2)}deg) translate3d(${(mx * 10).toFixed(1)}px, ${(my * 6).toFixed(1)}px, 0)`;
+    const f = 1 - Math.pow(1 - 0.06, dt); // frame-rate-independent smoothing
+    mx += (tx - mx) * f;
+    my += (ty - my) * f;
+    applyTilt(
+      `rotateX(${(-my * 4).toFixed(2)}deg) rotateY(${(mx * 7).toFixed(2)}deg) translate3d(${(mx * 10).toFixed(1)}px, ${(my * 6).toFixed(1)}px, 0)`,
+    );
   }
 
+  let rafId = 0, running = false, lastFrame = 0;
   function frame(now: number) {
-    tilt(now - start);
-    draw(now);
-    alignThread();
-    requestAnimationFrame(frame);
+    // delta-time in 60Hz steps; clamped so a stutter or resume can't jump
+    const dt = lastFrame === 0 ? 1 : Math.min((now - lastFrame) / 16.667, 2);
+    lastFrame = now;
+    tilt(now - start, dt);
+    draw(now, dt);
+    rafId = requestAnimationFrame(frame);
+  }
+  function startLoop() {
+    if (running || document.hidden) return;
+    running = true;
+    lastFrame = 0;
+    rafId = requestAnimationFrame(frame);
+  }
+  function stopLoop() {
+    running = false;
+    cancelAnimationFrame(rafId);
   }
 
   size();
-  window.addEventListener("resize", size, { passive: true });
+  window.addEventListener("resize", () => {
+    size(); // resize clears the canvas — redraw the frozen scene under reduced motion
+    if (reduce) {
+      draw(0);
+      applyTilt(STATIC_TILT);
+    }
+  }, { passive: true });
 
-  // dangling yarn ball tracks the cat's raised paw (follows the tilting diorama)
-  const thread = document.querySelector(".thread") as HTMLElement | null;
-  const catImg = document.querySelector(".cat__img") as HTMLImageElement | null;
-  const threadBall = thread?.querySelector(".thread__ball") as HTMLElement | null;
-  const PAW_X = 0.84, PAW_Y = 0.17; // raised-paw position within the cat image
-  function alignThread() {
-    if (!thread || !catImg) return;
-    const r = catImg.getBoundingClientRect();
-    if (!r.width) return;
-    const ballH = threadBall ? threadBall.offsetHeight : 46;
-    thread.style.left = r.left + r.width * PAW_X - thread.offsetWidth / 2 + "px";
-    thread.style.height = r.top + r.height * PAW_Y + ballH / 2 + "px";
-  }
-  if (catImg && !catImg.complete) catImg.addEventListener("load", alignThread);
+  // gentle user-triggered yarn feedback
   if (threadBall && thread) {
     threadBall.addEventListener("click", () => {
       thread.classList.remove("bounce");
@@ -210,15 +264,33 @@
         thread.classList.remove("bounce");
     });
   }
-  if (reduce) {
-    diorama.style.transform = "rotateY(3deg)";
-    draw(0);
-    alignThread();
-    requestAnimationFrame(alignThread);
-    // no rAF loop under reduced motion, so re-align whenever layout changes
-    new ResizeObserver(alignThread).observe(document.documentElement);
-  } else {
-    requestAnimationFrame(frame);
-  }
+  if (catImg && !catImg.complete) catImg.addEventListener("load", measure);
+  window.addEventListener("load", measure);
 
+  // Freeze/unfreeze live, without a reload.
+  reduceMql.addEventListener("change", (e) => {
+    reduce = e.matches;
+    if (reduce) {
+      stopLoop();
+      draw(0);
+      applyTilt(STATIC_TILT);
+    } else {
+      mx = 3 / 7; my = 0; // resume near the frozen pose (rotation matches; translation eases out)
+      startLoop();
+    }
+  });
+
+  // Pause while hidden; resume continues at the frozen state with no jump.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stopLoop();
+    else if (!reduce) startLoop();
+  });
+
+  if (reduce) {
+    draw(0);
+    applyTilt(STATIC_TILT);
+    // fully static: no rAF loop, no observers
+  } else {
+    startLoop();
+  }
 </script>

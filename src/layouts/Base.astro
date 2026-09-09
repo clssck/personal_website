@@ -1,15 +1,13 @@
 ---
 import "../styles/global.css";
+import { SITE } from "../lib/profile";
 
 interface Props {
   title?: string;
   description?: string;
 }
 
-const {
-  title = "János Földvárszki",
-  description = "János Földvárszki — I like computers.",
-} = Astro.props;
+const { title = SITE.title, description = SITE.description } = Astro.props;
 
 const canonical = Astro.site
   ? new URL(Astro.url.pathname, Astro.site).href
@@ -23,6 +21,7 @@ const ogImageAlt = `${title} — social preview`;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>document.documentElement.classList.add("js")</script>
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="generator" content={Astro.generator} />

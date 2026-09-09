@@ -33,7 +33,6 @@
 html {
   -webkit-text-size-adjust: 100%;
   color-scheme: dark;
-  overflow: hidden;
 }
 
 body {
@@ -43,7 +42,6 @@ body {
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow: hidden;
 }
 
 .sr-only {
@@ -77,6 +75,12 @@ a {
 a:hover {
   color: #fff;
   border-color: #fff;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 ::selection {
@@ -213,6 +217,8 @@ a:hover {
   left: clamp(0px, 1.5vw, 36px);
   bottom: -1vh;
   height: clamp(240px, 42vh, 470px);
+  /* depth contract: #threadAnchor (Scene.astro) carries the same translateZ —
+     keep in sync or the yarn ball drifts from the paw at tilt extremes */
   transform: translateZ(40px);
   will-change: transform;
 }
@@ -225,8 +231,10 @@ a:hover {
 .thread {
   position: absolute;
   top: 0;
-  left: 12%;
-  height: 65%;
+  /* viewport units: same full-viewport fallback as before, and still sane now
+     that .thread nests inside the zero-size #threadAnchor (JS sets px) */
+  left: 12vw;
+  height: 65vh;
   width: 56px;
   transform-origin: top center;
   animation: threadswing 5.5s ease-in-out infinite;
@@ -286,9 +294,18 @@ a:hover {
 }
 @media (max-width: 560px) {
   .cat { height: clamp(150px, 26vh, 230px); left: -14px; bottom: -1vh; }
-  .thread { width: 46px; }
+  /* yarn would cross the readable panel — hide it on narrow screens */
+  .thread { width: 46px; display: none; }
   .thread__ball { width: 40px; height: 40px; }
-  .term { background: rgba(10, 14, 18, 0.62); }
+  :root { --term-bg: rgba(10, 14, 18, 0.78); }
+  .layer { opacity: 0.55; }
+  .scene::after {
+    background: radial-gradient(
+      130% 100% at 50% 46%,
+      transparent 40%,
+      rgba(0, 0, 0, 0.72) 100%
+    );
+  }
 }
 
 /* ============================================================
@@ -312,6 +329,77 @@ a:hover {
   justify-items: center;
   gap: 0.9rem;
   width: min(94vw, 720px);
+}
+
+.term__intro {
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--term-line);
+}
+.term__name {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.term__tag {
+  margin-top: 0.15rem;
+}
+.term__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+.term__links a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.3rem 0.85rem;
+  border: 1px solid var(--term-line);
+  border-bottom-width: 1px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.term__links a:hover {
+  border-color: var(--teal);
+}
+.term__details {
+  margin-top: 0.55rem;
+}
+.term__details summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--teal);
+  list-style: none;
+}
+.term__details summary::-webkit-details-marker {
+  display: none;
+}
+.term__details summary::before {
+  content: "▸";
+  margin-right: 0.5ch;
+  color: var(--faint);
+}
+.term__details[open] summary::before {
+  content: "▾";
+}
+.term__details summary:hover {
+  color: #fff;
+}
+.term__details p,
+.term__details ul {
+  margin-top: 0.4rem;
+}
+.term__details p + p {
+  margin-top: 0.5rem;
+}
+.term__details ul {
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
 }
 
 .term {
@@ -395,37 +483,36 @@ a:hover {
 
 /* prompt + input line */
 .term__line {
-  position: relative;
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 .prompt { margin-right: 0.5ch; }
 .prompt .u { color: var(--teal); }
 .prompt .h { color: var(--violet); }
 .prompt .dim { color: var(--faint); }
 
-#typed { color: var(--fg); }
-.cursor {
-  display: inline-block;
-  width: 0.6ch;
-  height: 1.05em;
-  transform: translateY(0.18em);
-  background: var(--teal);
-  margin-left: 1px;
-  animation: curBlink 1.05s steps(1) infinite;
+/* visible native input — width tracks content in ch (monospace, set by JS) */
+.cmdwrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  font-size: max(1rem, 16px);
 }
-#kbd {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
+#cmd {
+  flex: 0 0 auto;
+  max-width: 100%;
+  background: transparent;
   border: 0;
   padding: 0;
-  background: transparent;
-  color: transparent;
+  margin: 0;
+  font: inherit;
+  color: var(--fg);
+  caret-color: var(--teal);
+}
+/* keyboard focus stays visible via the .term:focus-within ring */
+#cmd:focus {
+  outline: none;
 }
 
 /* content classes used inside injected output */
@@ -434,9 +521,16 @@ a:hover {
 .dim { color: var(--faint); }
 .err { color: var(--red); }
 b, .b { color: #fff; font-weight: 600; }
+.ln a b { color: inherit; }
 .ghost {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: pre;
   color: var(--faint);
   opacity: 0.6;
+  pointer-events: none;
+  user-select: none;
 }
 .grad {
   background: linear-gradient(100deg, var(--teal), var(--violet) 45%, var(--amber) 95%);
@@ -447,6 +541,48 @@ b, .b { color: #fff; font-weight: 600; }
   font-weight: 700;
   animation: sheen 8s var(--ease) infinite;
 }
+
+.neo {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0 1.25rem;
+  align-items: start;
+}
+.neo__art {
+  margin: 0;
+  font: inherit;
+  white-space: pre;
+  color: var(--teal);
+}
+.neo__kv {
+  margin: 0;
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.neo__row {
+  display: grid;
+  grid-template-columns: 6ch minmax(0, 1fr);
+  gap: 0 0.75rem;
+}
+.neo__row dt {
+  color: var(--amber);
+}
+.neo__row dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* ASCII art only where it fits — narrow screens get clean key/value rows */
+@media (max-width: 480px) {
+  .neo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .neo__art {
+    display: none;
+  }
+}
+
 kbd {
   font-family: var(--mono);
   font-size: 0.85em;
@@ -458,13 +594,31 @@ kbd {
   color: var(--fg);
 }
 
+.term__foot {
+  flex: 0 0 auto;
+}
 .hint {
+  display: none;
   font-family: var(--mono);
   font-size: 0.78rem;
   color: var(--faint);
   text-align: center;
+  padding: 0.55rem 0.9rem;
+  border-top: 1px solid var(--term-line);
+  background: rgba(255, 255, 255, 0.025);
 }
 .hint .a { color: var(--teal); }
+
+.js .hint {
+  display: block;
+}
+/* No JS, no live prompt either — the SSR intro and disclosures carry the page */
+#inputline {
+  display: none;
+}
+.js #inputline {
+  display: flex;
+}
 
 /* ============================================================
    Animation
@@ -479,10 +633,6 @@ kbd {
 
 @keyframes rise {
   to { opacity: 1; transform: translateY(0); }
-}
-@keyframes curBlink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
 }
 @keyframes sheen {
   0%, 100% { background-position: 0% 50%; }
@@ -500,7 +650,6 @@ kbd {
     transition-duration: 0.001ms !important;
   }
   .reveal { opacity: 1; transform: none; }
-  .cursor { animation: none; }
   /* User-triggered feedback is preserved even when ambient motion is reduced. */
   .thread.bounce {
     animation: threadBounce 1.3s cubic-bezier(0.25, 0.6, 0.3, 1) both !important;
