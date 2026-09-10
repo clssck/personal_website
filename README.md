@@ -4,18 +4,26 @@ The personal site of János Földvárszki — a single page: an animated backdro
 and a working terminal you can type into. Code stays tiny (~35 KB of
 HTML + JS + CSS); the only image is one small cat illustration.
 
-## What's new (terminal refresh)
+## Terminal
 
-- First screen is the terminal itself: name, Engineer role, tagline and
-  shortcuts server-render inside the glass; about/projects live in native
-  `<details>` so the page works with JS disabled.
-- `projects` shows the curated five; `repos` lists every public repo live
-  from the GitHub API (paginated, validated, short cache, safe links).
-- Native visible prompt input (no fake caret), strict Tab rules, guarded
-  command/file registries, async output tied to its command across `clear`.
+- First screen is an empty terminal: a blinking block at the bare prompt
+  plus a one-line typing hint; visitors discover everything with commands
+  (`help` first). No intro text, no shortcuts, nothing pre-run.
+- The block is a pure idle affordance — it disappears the moment the
+  native input takes focus, so the real caret (and selection) owns all
+  editing; under `prefers-reduced-motion` it stands still instead of
+  flashing. Nothing ever autofocuses, so mobile gets no surprise keyboard.
+- Identity, shortcuts and about/projects live in a `<noscript>` fallback:
+  the page still reads (and links) with JS disabled; it is not shown
+  when JS is enabled.
+- Native visible prompt input, strict Tab rules, guarded command/file
+  registries, async output tied to its command across `clear`; `projects`
+  shows the curated five, `repos` lists every public repo live from the
+  GitHub API (paginated, validated, short cache, safe links).
 - Truthful Engineer/Dataiku/Veeva copy; social card and metadata match.
 - Regression tests: `bun test` (pure GitHub/terminal logic plus real-Chrome
-  keyboard/focus/rendering checks against intercepted fixtures).
+  keyboard/focus/rendering checks against intercepted fixtures, covering
+  the empty start, the blink/static-reduced cursor and the no-JS page).
 
 ## Stack
 
@@ -25,7 +33,9 @@ HTML + JS + CSS); the only image is one small cat illustration.
   (parallax), with canopy blobs, drifting +/dot/sparkle canvas particles,
   depth-of-field blurred leaves, and a focal Russian Blue cat batting a
   swinging yarn thread — the technique of the zustand demo, rebuilt with
-  CSS/SVG/canvas. The cat is the one raster asset (`public/cat.webp`,
+  CSS/SVG/canvas. The yarn thread is clipped outside the terminal's
+  bounds (rebuilt on resize/scaling), so it can never cross the prompt
+  or output. The cat is the one raster asset (`public/cat.webp`,
   AI-generated then background-removed).
 - An interactive terminal REPL (`src/components/Terminal.astro`) — the
   centerpiece. Boots to a live native prompt. Supports `help`, `whoami`,
@@ -37,7 +47,8 @@ HTML + JS + CSS); the only image is one small cat illustration.
 - Graceful fallback: animation freezes (single frame) under
   `prefers-reduced-motion`, live-toggled without reload, and pauses while
   the tab is hidden. Visitor input and repo data are validated/escaped
-  before rendering; the page stays readable with JS disabled.
+  before rendering; with JS disabled a `<noscript>` fallback carries the
+  identity, links and about/projects content.
 
 ## Develop
 

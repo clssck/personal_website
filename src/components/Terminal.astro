@@ -5,42 +5,45 @@ const reposDisplay = SITE.reposUrl.replace(/^https?:\/\//, "");
 ---
 
 <section class="termwrap reveal" data-d="2">
+  <h1 class="visually-hidden">{SITE.name} — {SITE.role}: {SITE.tagline}</h1>
   <div class="term" id="term">
     <div class="term__bar">
       <span class="dots"><i></i><i></i><i></i></span>
       <span class="term__title">visitor@janos — zsh</span>
     </div>
     <div class="term__screen" id="screen">
-      <header class="term__intro">
-        <h1 class="term__name"><span class="grad">{SITE.name}</span></h1>
-        <p class="term__tag"><span class="k">{SITE.role}</span> — {SITE.tagline}</p>
-        <nav class="term__links" aria-label="Shortcuts">
-          <a href="#about" data-cmd="about">about</a>
-          <a href="#projects" data-cmd="projects">projects</a>
-          <a href={SITE.reposUrl} data-cmd="repos" target="_blank" rel="noopener noreferrer">repos</a>
-          <a href={SITE.githubUrl} target="_blank" rel="noopener noreferrer">github</a>
-        </nav>
-        <details class="term__details" id="about">
-          <summary>about</summary>
-          {ABOUT.map((p) => <p>{p}</p>)}
-        </details>
-        <details class="term__details" id="projects">
-          <summary>projects</summary>
-          <ul>
-            {PROJECTS.map((p) => (
-              <li>
-                <a href={projectUrl(p.slug)} target="_blank" rel="noopener noreferrer">{p.name}</a>
-                <span> — {p.description}</span>
-              </li>
-            ))}
-          </ul>
-          <p>All public repos: <a href={SITE.reposUrl} target="_blank" rel="noopener noreferrer">{reposDisplay}</a></p>
-        </details>
-      </header>
+      <noscript>
+        <div class="term__intro">
+          <p class="term__name"><span class="grad">{SITE.name}</span></p>
+          <p class="term__tag"><span class="k">{SITE.role}</span> — {SITE.tagline}</p>
+          <nav class="term__links" aria-label="Shortcuts">
+            <a href="#about">about</a>
+            <a href="#projects">projects</a>
+            <a href={SITE.reposUrl} target="_blank" rel="noopener noreferrer">repos</a>
+            <a href={SITE.githubUrl} target="_blank" rel="noopener noreferrer">github</a>
+          </nav>
+          <details class="term__details" id="about">
+            <summary>about</summary>
+            {ABOUT.map((p) => <p>{p}</p>)}
+          </details>
+          <details class="term__details" id="projects">
+            <summary>projects</summary>
+            <ul>
+              {PROJECTS.map((p) => (
+                <li>
+                  <a href={projectUrl(p.slug)} target="_blank" rel="noopener noreferrer">{p.name}</a>
+                  <span> — {p.description}</span>
+                </li>
+              ))}
+            </ul>
+            <p>All public repos: <a href={SITE.reposUrl} target="_blank" rel="noopener noreferrer">{reposDisplay}</a></p>
+          </details>
+        </div>
+      </noscript>
       <div id="out" role="log" aria-live="polite" aria-relevant="additions"></div>
       <form class="term__line" id="inputline" autocomplete="off" novalidate>
         <label class="prompt" for="cmd"><span class="u">visitor</span><span class="dim">@</span><span class="h">janos</span><span class="dim">:~$</span></label>
-        <span class="cmdwrap"><input id="cmd" name="cmd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" aria-label="Terminal command" aria-describedby="terminal-hint" /><span class="ghost" id="ghost" aria-hidden="true"></span></span>
+        <span class="cmdwrap"><input id="cmd" name="cmd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder=" " aria-label="Terminal command" aria-describedby="terminal-hint" /><span class="ghost" id="ghost" aria-hidden="true"></span><span class="cursor" aria-hidden="true"></span></span>
       </form>
     </div>
     <div class="term__foot"><p class="hint" id="terminal-hint">psst — it's a real terminal. type <span class="a">help</span> and hit <kbd>↵</kbd></p></div>
@@ -402,22 +405,11 @@ const reposDisplay = SITE.reposUrl.replace(/^https?:\/\//, "");
 
   const focusKbd = () => kbd.focus({ preventScroll: true });
   view.addEventListener("click", (e) => {
-    // interactive targets keep their own behavior — and never summon keyboards
-    if ((e.target as HTMLElement).closest("a,button,summary,input,select,textarea,details"))
-      return;
+    // the prompt is the only interactive thing in the screen; clicks on it
+    // (or anywhere else that owns focus) are left alone — and focusing here
+    // is user-initiated, so it never summons a mobile keyboard on its own
+    if ((e.target as HTMLElement).closest("a,button,input")) return;
     if (!String(window.getSelection())) focusKbd();
-  });
-
-  // Shortcut links double as command runners under JS — without stealing
-  // focus (no forced mobile keyboard); without JS they're plain anchors.
-  document.querySelectorAll<HTMLAnchorElement>("a[data-cmd]").forEach((a) => {
-    a.addEventListener("click", (e) => {
-      // modified/non-primary clicks stay native (new tab, jump link, …)
-      if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.button !== 0)
-        return;
-      e.preventDefault();
-      if (a.dataset.cmd) run(a.dataset.cmd);
-    });
   });
 
   term.dataset.ready = "true";

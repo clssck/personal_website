@@ -57,17 +57,29 @@
   <!-- The yarn hangs on a full-viewport 3D twin layer that mirrors the diorama's
        tilt transform (same box, same .scene perspective), anchored to the cat's
        plane (translateZ(40px), matching .cat in global.css) — so the ball stays
-       glued to the paw by transform alone, with no per-frame measurements. -->
-  <div id="threadLayer" style="position:absolute;inset:0;transform-style:preserve-3d">
-    <div id="threadAnchor" style="position:absolute;top:0;left:0;transform:translateZ(40px)">
-      <div class="thread" aria-hidden="true">
-        <span class="thread__line"></span>
-        <span class="thread__ball">
-          <svg viewBox="0 0 56 56">
-            <circle cx="28" cy="28" r="24" fill="#e0674f" />
-            <path d="M8 22C22 14 36 18 47 30M7 34C20 46 38 42 49 30M18 9C20 30 26 48 19 53M38 10C36 31 31 49 38 54" fill="none" stroke="#b8412f" stroke-width="2" stroke-linecap="round" opacity="0.85" />
-          </svg>
-        </span>
+       glued to the paw by transform alone, with no per-frame measurements.
+
+       #threadClip is a stationary, untransformed box that only clips: its
+       clip-path cuts the terminal's rectangle (plus a safety margin) out of the
+       yarn, so the thread and ball can never paint across the terminal at any
+       tilt, viewport size or zoom, while staying visible everywhere else.
+       clip-path forces transform-style: flat, which would disconnect the layer
+       from .scene's perspective, so the wrapper re-states that perspective
+       (900px / 50% 45%) over the identical box — the frustum is unchanged. The
+       hole is rebuilt from layout on resize/scroll/ResizeObserver only, never
+       from the animation loop. -->
+  <div id="threadClip" style="position:absolute;inset:0;perspective:900px;perspective-origin:50% 45%;clip-path:polygon(0px 0px,100% 0px,100% 100%,0px 100%)">
+    <div id="threadLayer" style="position:absolute;inset:0;transform-style:preserve-3d">
+      <div id="threadAnchor" style="position:absolute;top:0;left:0;transform:translateZ(40px)">
+        <div class="thread" aria-hidden="true">
+          <span class="thread__line"></span>
+          <span class="thread__ball">
+            <svg viewBox="0 0 56 56">
+              <circle cx="28" cy="28" r="24" fill="#e0674f" />
+              <path d="M8 22C22 14 36 18 47 30M7 34C20 46 38 42 49 30M18 9C20 30 26 48 19 53M38 10C36 31 31 49 38 54" fill="none" stroke="#b8412f" stroke-width="2" stroke-linecap="round" opacity="0.85" />
+            </svg>
+          </span>
+        </div>
       </div>
     </div>
   </div>
@@ -252,6 +264,82 @@
     }
   }, { passive: true });
 
+  // ---- terminal occlusion ---------------------------------------------------
+  // The yarn layer is clipped by a hole cut to the terminal's rectangle (+ a
+  // small margin), so the thread and ball can never paint across the terminal
+  // at any tilt, viewport size or zoom. The hole is rebuilt from layout only
+  // when layout can change (resize, ResizeObserver, scroll, CSS animations) —
+  // the render loop never measures anything.
+  const threadClip = document.getElementById("threadClip") as HTMLElement | null;
+  const terminal = document.querySelector<HTMLElement>(".termwrap");
+  const HOLE_MARGIN = 3;   // px of clearance around the terminal rectangle
+  const REVEAL_SWEEP = 14; // px .reveal lifts the terminal on arrival
+
+  let clipKey = "";
+
+  function updateClip() {
+    if (!threadClip || !terminal) return;
+    const box = threadClip.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    // getBoundingClientRect speaks viewport (visual) px, but clip-path lengths
+    // resolve in the wrapper's local px; the two differ under CSS zoom or any
+    // scaled ancestor, so normalize the relative coords by the measured scale.
+    const localW = threadClip.offsetWidth, localH = threadClip.offsetHeight;
+    if (!localW || !localH) return;
+    const sx = box.width / localW, sy = box.height / localH;
+    const term = terminal.getBoundingClientRect();
+    // While .reveal is still running, the terminal is on its way up; cover the
+    // whole sweep (never measuring per frame) and re-cut when it lands.
+    const arriving = terminal.getAnimations().some((a) => a.playState === "running");
+    const pad = arriving ? REVEAL_SWEEP : 0;
+    const x1 = (term.left - box.left) / sx - HOLE_MARGIN;
+    const y1 = (term.top - box.top) / sy - HOLE_MARGIN - pad;
+    const x2 = (term.right - box.left) / sx + HOLE_MARGIN;
+    const y2 = (term.bottom - box.top) / sy + HOLE_MARGIN + pad;
+    // Clamp the hole strictly inside the wrapper: a terminal fully outside the
+    // viewport collapses to a degenerate hole, i.e. no clipping at all.
+    const cx1 = Math.round(Math.min(Math.max(x1, 0.5), localW - 0.5) * 2) / 2;
+    const cy1 = Math.round(Math.min(Math.max(y1, 0.5), localH - 0.5) * 2) / 2;
+    const cx2 = Math.round(Math.min(Math.max(x2, 0.5), localW - 0.5) * 2) / 2;
+    const cy2 = Math.round(Math.min(Math.max(y2, 0.5), localH - 0.5) * 2) / 2;
+    const hole = cx2 - cx1 > 0.5 && cy2 - cy1 > 0.5;
+    const key = `${box.width},${box.height},${localW},${localH}|` + (hole ? `${cx1},${cy1},${cx2},${cy2}` : "all");
+    if (key === clipKey) return; // identical clip: skip the style write
+    clipKey = key;
+    if (!hole) {
+      threadClip.style.clipPath = `polygon(0px 0px, ${localW}px 0px, ${localW}px ${localH}px, 0px ${localH}px)`;
+      return;
+    }
+    // One rectilinear keyhole: outer box clockwise, hole anticlockwise, with
+    // the zero-area seam along y = cy1, so every fill rule cuts the hole out.
+    threadClip.style.clipPath =
+      `polygon(0px 0px, ${localW}px 0px, ${localW}px ${localH}px, 0px ${localH}px, ` +
+      `0px ${cy1}px, ${cx1}px ${cy1}px, ${cx1}px ${cy2}px, ${cx2}px ${cy2}px, ${cx2}px ${cy1}px, 0px ${cy1}px)`;
+  }
+
+  if (threadClip && terminal) {
+    let clipQueued = false;
+    const queueClip = () => {
+      if (clipQueued) return; // coalesce resize/scroll/animation storms to one read
+      clipQueued = true;
+      requestAnimationFrame(() => {
+        clipQueued = false;
+        updateClip();
+      });
+    };
+    updateClip(); // the first paint already has the hole cut
+    new ResizeObserver(queueClip).observe(terminal);
+    new ResizeObserver(queueClip).observe(threadClip);
+    window.addEventListener("resize", queueClip, { passive: true });
+    window.addEventListener("scroll", queueClip, { passive: true });
+    // settle pass for the terminal's reveal (rise) and font/layout shifts
+    document.addEventListener("animationstart", queueClip);
+    document.addEventListener("animationend", queueClip);
+    document.addEventListener("animationcancel", queueClip);
+    document.fonts.ready.then(queueClip);
+    window.addEventListener("load", queueClip);
+  }
+
   // gentle user-triggered yarn feedback
   if (threadBall && thread) {
     threadBall.addEventListener("click", () => {
@@ -289,7 +377,7 @@
   if (reduce) {
     draw(0);
     applyTilt(STATIC_TILT);
-    // fully static: no rAF loop, no observers
+    // fully static: no rAF loop
   } else {
     startLoop();
   }

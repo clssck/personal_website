@@ -216,21 +216,16 @@ async function runCmd(page: Page, text: string): Promise<void> {
 }
 
 describe("first screen", () => {
-  test("terminal carries identity, shortcuts and a live prompt", async () => {
+  test("terminal starts empty: no intro, no shortcuts, nothing pre-run", async () => {
     const page = await newPage();
     try {
-      expect(await page.$eval("h1", (el) => el.textContent)).toContain(
-        "János Földvárszki"
-      );
-      const tag = await page.$eval(".term__tag", (el) => el.textContent);
-      expect(tag).toContain("Engineer");
-      expect(tag).toContain("I make annoying things easier.");
-      expect(await page.$eval('a[href="#about"]', (el) => el.textContent)).toBe(
-        "about"
-      );
-      expect(
-        await page.$eval('a[href="#projects"]', (el) => el.textContent)
-      ).toBe("projects");
+      // nothing to read or click until the visitor types: no output, no
+      // intro block, no shortcut links, no disclosures in the live terminal
+      expect(await outText(page)).toBe("");
+      expect(await page.$(".term__intro")).toBeNull();
+      expect(await page.$(".term__links")).toBeNull();
+      expect(await page.$("#screen a")).toBeNull();
+      expect(await page.$("#screen details")).toBeNull();
       // prompt is interactive: input + hint visible, JS gate open
       expect(
         await page.$eval("#cmd", (el) => getComputedStyle(el).display)
@@ -242,6 +237,109 @@ describe("first screen", () => {
       expect(
         await page.$eval("#terminal-hint", (el) => getComputedStyle(el).display)
       ).not.toBe("none");
+      // and the empty screen answers: it is live, not dead
+      await runCmd(page, "help");
+      expect(await outText(page)).toContain("available commands");
+    } finally {
+      await page.close();
+    }
+  }, 30000);
+});
+
+describe("idle cursor", () => {
+  test("cursor blinks at the empty prompt and hides while editing", async () => {
+    const page = await newPage();
+    try {
+      // pin full motion: the host OS may itself prefer reduced motion
+      await page.emulateMediaFeatures([
+        { name: "prefers-reduced-motion", value: "no-preference" },
+      ]);
+      // idle: parked at the start of the empty line, ready to be typed over
+      const cur = await page.$eval(".cursor", (el) => ({
+        display: getComputedStyle(el).display,
+        rect: (el as HTMLElement).getBoundingClientRect().toJSON(),
+      }));
+      expect(cur.display).not.toBe("none");
+      const inputRect = await page.$eval("#cmd", (el) =>
+        (el as HTMLElement).getBoundingClientRect().toJSON()
+      );
+      expect(Math.abs(cur.rect.x - inputRect.x)).toBeLessThan(3);
+      // it flashes: drive its own timeline to 10% and 60% of the period —
+      // visible in one phase, gone in the other (no wall clock, no period pin)
+      const phases = await page.evaluate(() => {
+        const el = document.querySelector(".cursor") as HTMLElement;
+        const anim = el.getAnimations()[0];
+        anim.pause();
+        const dur = Number(
+          (anim.effect as KeyframeEffect).getComputedTiming().duration
+        );
+        anim.currentTime = dur * 0.1;
+        const on = parseFloat(getComputedStyle(el).opacity);
+        anim.currentTime = dur * 0.6;
+        const off = parseFloat(getComputedStyle(el).opacity);
+        anim.play();
+        return { on, off };
+      });
+      expect(phases.on).toBeGreaterThan(0);
+      expect(phases.off).toBe(0);
+      // it never intercepts: tapping where it sits focuses the native input
+      const box = await page.$(".cursor").then((h) => h!.boundingBox());
+      await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+      expect(
+        await page.evaluate(
+          () => (document.activeElement as HTMLElement | null)?.id ?? ""
+        )
+      ).toBe("cmd");
+      // editing: the native caret owns the line, the block is gone
+      await page.keyboard.type("help", { delay: 5 });
+      expect(
+        await page.$eval(".cursor", (el) => getComputedStyle(el).display)
+      ).toBe("none");
+      // native selection survives it: a keyboard select-all still spans
+      // the real text (no fake caret eating the endpoints)
+      await page.keyboard.press("Home");
+      await page.keyboard.down("Shift");
+      await page.keyboard.press("End");
+      await page.keyboard.up("Shift");
+      const sel = await page.$eval("#cmd", (el) => ({
+        start: (el as HTMLInputElement).selectionStart,
+        end: (el as HTMLInputElement).selectionEnd,
+      }));
+      expect(sel).toEqual({ start: 0, end: 4 });
+      expect(
+        await page.$eval(".cursor", (el) => getComputedStyle(el).display)
+      ).toBe("none");
+      // emptied and blurred: the affordance returns
+      await page.keyboard.press("Enter");
+      expect(await inputValue(page)).toBe("");
+      await page.evaluate(() =>
+        (document.activeElement as HTMLElement | null)?.blur?.()
+      );
+      expect(
+        await page.$eval(".cursor", (el) => getComputedStyle(el).display)
+      ).not.toBe("none");
+    } finally {
+      await page.close();
+    }
+  }, 30000);
+
+  test("reduced motion keeps the cursor statically visible", async () => {
+    const page = await newPage();
+    try {
+      await page.emulateMediaFeatures([
+        { name: "prefers-reduced-motion", value: "reduce" },
+      ]);
+      // static: nothing animating on the block …
+      expect(
+        await page.$eval(".cursor", (el) => el.getAnimations().length)
+      ).toBe(0);
+      // … yet still visibly parked at the prompt
+      const cur = await page.$eval(".cursor", (el) => ({
+        display: getComputedStyle(el).display,
+        opacity: parseFloat(getComputedStyle(el).opacity),
+      }));
+      expect(cur.display).not.toBe("none");
+      expect(cur.opacity).toBeGreaterThan(0);
     } finally {
       await page.close();
     }
@@ -403,29 +501,7 @@ describe("keyboard", () => {
     }
   }, 30000);
 
-  test("clicking disclosures and shortcuts never focuses the prompt", async () => {
-    const page = await newPage();
-    try {
-      await page.click("#projects summary");
-      expect(
-        await page.$eval("#projects", (el) => (el as HTMLDetailsElement).open)
-      ).toBe(true);
-      let activeId = await page.evaluate(
-        () => (document.activeElement as HTMLElement | null)?.id ?? ""
-      );
-      expect(activeId).not.toBe("cmd");
-      const urlBefore = page.url();
-      await page.click('.term__links a[data-cmd="about"]');
-      expect(await outText(page)).toContain("Dataiku DSS");
-      activeId = await page.evaluate(
-        () => (document.activeElement as HTMLElement | null)?.id ?? ""
-      );
-      expect(activeId).not.toBe("cmd");
-      expect(page.url()).toBe(urlBefore); // no hash navigation under JS
-    } finally {
-      await page.close();
-    }
-  }, 30000);
+  
 
   test("IME Enter never submits; modified ArrowRight never accepts", async () => {
     const page = await newPage();
@@ -581,64 +657,7 @@ describe("repos", () => {
     }
   }, 60000);
 
-  test("repos shortcut runs the command; modified clicks stay native", async () => {
-    const page = await newPage();
-    try {
-      await page.evaluate(() => localStorage.clear());
-      await serveFixture(page, {
-        1: [
-          fixtureRepo(1, {
-            name: "shortcut-result",
-            html_url: "https://github.com/clssck/shortcut-result",
-            fork: true,
-          }),
-        ],
-      });
-      // plain click runs the command in place, no navigation
-      const urlBefore = page.url();
-      await page.click('.term__links a[data-cmd="repos"]');
-      await page.waitForFunction(
-        () => document.getElementById("out")?.textContent?.includes("shortcut-result"),
-        { timeout: 25000 }
-      );
-      expect(page.url()).toBe(urlBefore);
-      // modified clicks are never intercepted
-      const preserved = await page.evaluate(() => {
-        const a = document.querySelector(
-          '.term__links a[data-cmd="repos"]'
-        ) as HTMLAnchorElement;
-        const out: Record<string, boolean> = {};
-        for (const mod of ["shiftKey", "ctrlKey", "metaKey", "altKey"] as const) {
-          const ev = new MouseEvent("click", {
-            bubbles: true,
-            cancelable: true,
-            button: 0,
-            [mod]: true,
-          });
-          a.dispatchEvent(ev);
-          out[mod] = ev.defaultPrevented;
-        }
-        return out;
-      });
-      expect(preserved).toEqual({
-        shiftKey: false,
-        ctrlKey: false,
-        metaKey: false,
-        altKey: false,
-      });
-      // the native fallback is intact for modified clicks and no-JS: driving
-      // a real new tab is environment-fragile, so assert the preserved
-      // handler branch above plus the anchor's own fallback instead
-      const fallback = await page.$eval('.term__links a[data-cmd="repos"]', (a) => ({
-        href: (a as HTMLAnchorElement).href,
-        target: (a as HTMLAnchorElement).target,
-      }));
-      expect(fallback.href).toBe(FALLBACK_REPOS);
-      expect(fallback.target).toBe("_blank");
-    } finally {
-      await page.close();
-    }
-  }, 60000);
+  
 });
 
 describe("no-JS", () => {
@@ -648,9 +667,13 @@ describe("no-JS", () => {
       await page.setViewport({ width: 1365, height: 768 });
       await page.setJavaScriptEnabled(false);
       await page.goto(BASE, { waitUntil: "domcontentloaded" });
-      expect(await page.$eval("h1", (el) => el.textContent)).toContain(
+      // the noscript fallback parses as real, visible DOM
+      expect(await page.$eval(".term__name", (el) => el.textContent)).toContain(
         "János Földvárszki"
       );
+      const tag = await page.$eval(".term__tag", (el) => el.textContent);
+      expect(tag).toContain("Engineer");
+      expect(tag).toContain("I make annoying things easier.");
       // native disclosures open without any script
       await page.click("#about summary");
       expect(await page.$eval("#about", (el) => (el as HTMLDetailsElement).open)).toBe(
@@ -680,17 +703,22 @@ describe("no-JS", () => {
 });
 
 describe("narrow viewport", () => {
-  test("390px keeps input readable, targets big, no sideways scroll", async () => {
+  test("390px keeps input readable, cursor visible, no sideways scroll", async () => {
     const page = await newPage({ width: 390, height: 844 });
     try {
       const fontPx = parseFloat(
         await page.$eval("#cmd", (el) => getComputedStyle(el).fontSize)
       );
       expect(fontPx).toBeGreaterThanOrEqual(16);
-      const linkH = await page.$eval(".term__links a", (el) =>
-        (el as HTMLElement).offsetHeight
-      );
-      expect(linkH).toBeGreaterThanOrEqual(44);
+      // the idle block still affords typing at small widths
+      const cur = await page.$eval(".cursor", (el) => ({
+        display: getComputedStyle(el).display,
+        w: (el as HTMLElement).offsetWidth,
+        h: (el as HTMLElement).offsetHeight,
+      }));
+      expect(cur.display).not.toBe("none");
+      expect(cur.w).toBeGreaterThan(0);
+      expect(cur.h).toBeGreaterThan(0);
       const overflow = await page.evaluate(
         () => document.scrollingElement!.scrollWidth <= window.innerWidth + 1
       );
