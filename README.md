@@ -1,14 +1,33 @@
 # personal_website
 
 The personal site of János Földvárszki — a single page: an animated backdrop
-and a working terminal you can type into. Code stays tiny (~35 KB of
-HTML + JS + CSS); the only image is one small cat illustration.
+and a working shell you can type into. No client framework, no terminal
+emulator library; the only image is one small cat illustration.
 
 ## Terminal
 
 - First screen is an empty terminal: a blinking block at the bare prompt
   plus a one-line typing hint; visitors discover everything with commands
   (`help` first). No intro text, no shortcuts, nothing pre-run.
+- It is a shell, not a command table: an in-memory filesystem with owners
+  and permission bits (`/home/visitor` is writable for the visit, the rest
+  is read-only, `/home/janos` is private), pipes, `&&`/`||`/`;`, `>`/`>>`/`<`
+  redirects, `$VAR`, `$(…)`, globs, aliases, exit statuses, and more than
+  fifty Unix-style commands with `man` pages. `fortune | cowsay > note.txt`
+  works.
+- Output is text with ANSI colours and OSC 8 links, rendered to escaped
+  HTML; pipes and files receive plain text. Bare URLs become links.
+- A foreground command owns the terminal until it finishes; Ctrl+C aborts
+  it (or abandons the typed line), Ctrl+L clears, Ctrl+U kills to the
+  start of the line. Keys typed meanwhile wait in the input.
+- The window is a window: the red button (or `exit`) closes it, yellow
+  minimises it to a launcher, green (or a double click on the title bar)
+  zooms it; the title bar drags it and the edges and corners resize it.
+  Minimising keeps the session, closing ends it, and the filesystem
+  outlives both until the page reloads. Pointer-driven open and close fade
+  with a slight scale; keyboard-driven ones are instant. At phone width the
+  window stays put and only zoom applies. Without JS the three dots are
+  decoration, not dead buttons.
 - The block is a pure idle affordance — it disappears the moment the
   native input takes focus, so the real caret (and selection) owns all
   editing; under `prefers-reduced-motion` it stands still instead of
@@ -16,14 +35,17 @@ HTML + JS + CSS); the only image is one small cat illustration.
 - Identity, shortcuts and about/projects live in a `<noscript>` fallback:
   the page still reads (and links) with JS disabled; it is not shown
   when JS is enabled.
-- Native visible prompt input, strict Tab rules, guarded command/file
-  registries, async output tied to its command across `clear`; `projects`
-  shows the curated five, `repos` lists every public repo live from the
-  GitHub API (paginated, validated, short cache, safe links).
-- Truthful Engineer/Dataiku/Veeva copy; social card and metadata match.
-- Regression tests: `bun test` (pure GitHub/terminal logic plus real-Chrome
-  keyboard/focus/rendering checks against intercepted fixtures, covering
-  the empty start, the blink/static-reduced cursor and the no-JS page).
+- Native visible prompt input and strict Tab rules (Tab is only taken when
+  it completes or lists, so keyboard users can always leave the prompt);
+  `projects` shows the curated set, `repos` lists every public repo live
+  from the GitHub API (paginated, validated, short cache, safe links).
+- `theme` switches the window between Catppuccin flavours (Mocha is the
+  default) and the original night palette; the choice is remembered in
+  `localStorage`.
+- Regression tests: `bun test` (pure filesystem/interpreter/command/window
+  geometry/GitHub logic plus real-Chrome keyboard/focus/rendering/window
+  checks against intercepted fixtures, covering the empty start, the
+  blink/static-reduced cursor and the no-JS page).
 
 ## Stack
 
@@ -37,13 +59,11 @@ HTML + JS + CSS); the only image is one small cat illustration.
   bounds (rebuilt on resize/scaling), so it can never cross the prompt
   or output. The cat is the one raster asset (`public/cat.webp`,
   AI-generated then background-removed).
-- An interactive terminal REPL (`src/components/Terminal.astro`) — the
-  centerpiece. Boots to a live native prompt. Supports `help`, `whoami`,
-  `about`, `skills`, `projects`, `repos` (every public repo, live from the
-  GitHub API), `github`, `neofetch`, `ls`/`cat`, `echo`, `date`, `fortune`,
-  `clear`, with command history (↑/↓, draft kept) and fish-style inline
-  autocomplete (ghost suggestion; Tab or → to accept, exact/empty input
-  keeps native Tab).
+- A shell in the browser (`src/components/Terminal.astro` over
+  `src/lib/shell/`) — the centerpiece. Boots to a live native prompt with
+  command history (↑/↓, draft kept) and fish-style inline autocomplete for
+  commands and paths (ghost suggestion; Tab or → to accept, exact/empty
+  input keeps native Tab).
 - Graceful fallback: animation freezes (single frame) under
   `prefers-reduced-motion`, live-toggled without reload, and pauses while
   the tab is hidden. Visitor input and repo data are validated/escaped
@@ -82,10 +102,18 @@ src/
 ├── pages/index.astro        # the page (wires Scene + Terminal)
 ├── layouts/Base.astro       # <head>, meta/OG tags, favicon
 ├── components/Scene.astro    # diorama: parallax layers, particles, cat
-├── components/Terminal.astro # interactive terminal + command registry
-├── lib/profile.ts           # canonical identity/projects copy (SSR + terminal)
+├── components/Terminal.astro # terminal window: prompt, keys, output, themes, window controls
+├── lib/profile.ts           # canonical identity/projects copy (SSR + shell files)
 ├── lib/github.ts            # public GitHub API: paginate, validate, cache
-├── lib/terminal.ts          # pure completion/Tab/history/escape helpers
+├── lib/ansi.ts              # ANSI SGR / OSC 8 → escaped HTML
+├── lib/terminal.ts          # pure Tab/escape helpers for the UI
+├── lib/window.ts            # pure window geometry: clamp and resize
+├── lib/shell/types.ts       # contracts: filesystem, commands, host, shell
+├── lib/shell/vfs.ts         # in-memory filesystem with permissions
+├── lib/shell/parse.ts       # tokenizer and parser
+├── lib/shell/shell.ts       # interpreter: expansion, pipelines, completion
+├── lib/shell/fs-image.ts    # the initial filesystem
+├── lib/shell/commands/      # the commands, grouped by kind
 └── styles/global.css        # theme tokens, layout, terminal styling
 tests/
 └── browser/terminal.browser.test.ts  # real-Chrome terminal regression

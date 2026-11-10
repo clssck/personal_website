@@ -7,14 +7,14 @@ const reposDisplay = SITE.reposUrl.replace(/^https?:\/\//, "");
 <section class="termwrap reveal" data-d="2">
   <h1 class="visually-hidden">{SITE.name} — {SITE.role}: {SITE.tagline}</h1>
   <div class="term" id="term">
-    <div class="term__bar">
-      <span class="dots"><i></i><i></i><i></i></span>
-      <span class="term__title">visitor@janos — zsh</span>
+    <div class="term__bar" id="termbar">
+      <span class="dots" id="dots"><i></i><i></i><i></i></span>
+      <span class="term__title" id="termtitle">visitor@janos: ~ — zsh</span>
     </div>
     <div class="term__screen" id="screen">
       <noscript>
         <div class="term__intro">
-          <p class="term__name"><span class="grad">{SITE.name}</span></p>
+          <p class="term__name">{SITE.name}</p>
           <p class="term__tag"><span class="k">{SITE.role}</span> — {SITE.tagline}</p>
           <nav class="term__links" aria-label="Shortcuts">
             <a href="#about">about</a>
@@ -42,272 +42,170 @@ const reposDisplay = SITE.reposUrl.replace(/^https?:\/\//, "");
       </noscript>
       <div id="out" role="log" aria-live="polite" aria-relevant="additions"></div>
       <form class="term__line" id="inputline" autocomplete="off" novalidate>
-        <label class="prompt" for="cmd"><span class="u">visitor</span><span class="dim">@</span><span class="h">janos</span><span class="dim">:~$</span></label>
+        <label class="prompt" for="cmd"><span class="u">visitor</span><span class="dim">@</span><span class="h">janos</span><span class="dim">:</span><span class="p" id="cwd">~</span><span class="dim">$</span></label>
         <span class="cmdwrap"><input id="cmd" name="cmd" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder=" " aria-label="Terminal command" aria-describedby="terminal-hint" /><span class="ghost" id="ghost" aria-hidden="true"></span><span class="cursor" aria-hidden="true"></span></span>
       </form>
     </div>
-    <div class="term__foot"><p class="hint" id="terminal-hint">psst — it's a real terminal. type <span class="a">help</span> and hit <kbd>↵</kbd></p></div>
+    <div class="term__foot"><p class="hint" id="terminal-hint">psst — it's a real shell. type <span class="a">help</span> and hit <kbd>↵</kbd></p></div>
   </div>
 </section>
 
 <script>
-  import { SITE, PROJECTS, ABOUT, SKILLS, projectUrl } from "../lib/profile";
-  import { loadRepos, FALLBACK_REPOS } from "../lib/github";
-  import {
-    completionFor,
-    shouldInterceptTab,
-    escapeHtml as esc,
-    own,
-    createHistory,
-  } from "../lib/terminal";
+  import { createAnsiRenderer } from "../lib/ansi";
+  import { loadRepos } from "../lib/github";
+  import { COMMANDS } from "../lib/shell/commands";
+  import { buildFsImage, DEFAULT_ALIASES, DEFAULT_ENV } from "../lib/shell/fs-image";
+  import { createShell } from "../lib/shell/shell";
+  import type { Host } from "../lib/shell/types";
+  import { createVfs } from "../lib/shell/vfs";
+  import { escapeHtml as esc, shouldInterceptTab } from "../lib/terminal";
+  import { clampRect, resizeRect, type Rect, type ResizeEdge } from "../lib/window";
 
   const term = document.getElementById("term") as HTMLElement;
+  const bar = document.getElementById("termbar") as HTMLElement;
+  const dots = document.getElementById("dots") as HTMLElement;
+  const title = document.getElementById("termtitle") as HTMLElement;
   const out = document.getElementById("out") as HTMLElement;
   const view = document.getElementById("screen") as HTMLElement;
   const form = document.getElementById("inputline") as HTMLFormElement;
+  const cwdLabel = document.getElementById("cwd") as HTMLElement;
   const kbd = document.getElementById("cmd") as HTMLInputElement;
   const ghost = document.getElementById("ghost") as HTMLElement;
 
-  const PROMPT =
-    '<span class="u">visitor</span><span class="dim">@</span><span class="h">janos</span><span class="dim">:~$</span>&nbsp;';
+  // ---- output ---------------------------------------------------------------
 
-  const ghDisplay = SITE.githubUrl.replace(/^https?:\/\//, "");
-  const ghLink = `<a href="${SITE.githubUrl}" target="_blank" rel="noopener noreferrer">${esc(ghDisplay)}</a>`;
-  const ext = (url: string, text: string) =>
-    `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+  /** Oldest lines fall off the top, as in any terminal with finite scrollback. */
+  const SCROLLBACK_LINES = 2000;
+  // The first entry is the stylesheet default; the others are data-theme overrides.
+  const THEMES = ["mocha", "macchiato", "frappe", "latte", "night"];
+  const THEME_KEY = "clssck:theme";
 
-  function makeLine(html: string, cls?: string) {
+  function appendLine(html: string, cls?: string) {
     const d = document.createElement("div");
-    d.className = "ln" + (cls ? " " + cls : "");
+    d.className = cls ? `ln ${cls}` : "ln";
     d.innerHTML = html;
-    return d;
-  }
-  function line(html: string, cls?: string) {
-    const d = makeLine(html, cls);
     out.appendChild(d);
-    return d;
   }
-  function printLines(arr: string[] | null) {
-    if (!arr) return;
-    for (const l of arr) line(l);
+  function trimScrollback() {
+    while (out.childElementCount > SCROLLBACK_LINES) out.firstElementChild!.remove();
   }
   const scrollDown = () => (view.scrollTop = view.scrollHeight);
-  const pick = <T,>(a: T[]) => a[(Math.random() * a.length) | 0];
 
-  const FORTUNES = [
-    "There are only two hard things in CS: cache invalidation and naming things.",
-    "“It works on my machine” is not a deployment strategy.",
-    "Premature optimization is the root of all evil. — Knuth",
-    "rm -rf doubts/",
-    "A good UI is like a joke — if you have to explain it, it isn't that good.",
-  ];
+  // stdout and stderr each keep their own unfinished line and open styles.
+  const streams = {
+    out: { partial: "", ansi: createAnsiRenderer() },
+    err: { partial: "", ansi: createAnsiRenderer() },
+  };
 
-  const NEO_ART = [
-    "   ╭───────────╮ ",
-    "   │  ◠     ◠  │ ",
-    "   │     ‿     │ ",
-    "   ╰───────────╯ ",
-    "      ║   ║      ",
-    "   ═══╩═══╩═══   ",
-  ];
-  function neofetchBlock(): string {
-    const row = (k: string, v: string) =>
-      `<div class="neo__row"><dt>${k}</dt><dd>${v}</dd></div>`;
-    return (
-      `<div class="neo"><pre class="neo__art" aria-hidden="true">` +
-      esc(NEO_ART.join("\n")) +
-      `</pre><dl class="neo__kv">` +
-      row("who", `<span class="grad">${esc(SITE.name)}</span>`) +
-      row("role", esc(SITE.role)) +
-      row("stack", "astro · ts · css3d/canvas") +
-      row("site", "astro · static · no framework runtime") +
-      row("github", ghLink) +
-      `</dl></div>`
-    );
-  }
+  /** Width of one monospace cell, for commands that lay out columns. */
+  const cell = document.createElement("span");
+  cell.textContent = "0".repeat(20);
+  cell.setAttribute("aria-hidden", "true");
+  cell.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+  view.appendChild(cell);
 
-  function repoLines(
-    repos: { name: string; url: string; description: string | null; language: string | null; archived: boolean; fork: boolean }[]
-  ): string[] {
-    const lines: string[] = [
-      `<span class="dim">${repos.length} public repos, most recently pushed first —</span>`,
-    ];
-    for (const r of repos) {
-      const flags =
-        (r.archived ? ` <span class="dim">[archived]</span>` : "") +
-        (r.fork ? ` <span class="dim">[fork]</span>` : "");
-      const lang = r.language ? ` <span class="dim">· ${esc(r.language)}</span>` : "";
-      lines.push(`▸ ${ext(r.url, `<b>${esc(r.name)}</b>`)}${flags}${lang}`);
-      lines.push(
-        r.description
-          ? `  ${esc(r.description)}`
-          : `  <span class="dim">(no description)</span>`
-      );
+  function storedTheme(): string | null {
+    try {
+      const saved = localStorage.getItem(THEME_KEY);
+      return saved && THEMES.includes(saved) ? saved : null;
+    } catch {
+      return null; // storage disabled: the default theme applies
     }
-    lines.push(
-      `<span class="dim">the full directory anytime:</span> ${ext(FALLBACK_REPOS, esc(FALLBACK_REPOS.replace(/^https?:\/\//, "")))}`
-    );
-    return lines;
   }
 
-  type Cmd = (
-    args: string[],
-    rest: string,
-    ctx: { id: number }
-  ) => string[] | null;
-
-  const aboutLines = (): string[] => [
-    ...ABOUT,
-    "",
-    `For the greatest hits: <span class="a">projects</span>.`,
-  ];
-  const skillsLines = (): string[] => [
-    "things i work with —",
-    ...SKILLS.map((s) => `  ${s}`),
-    "  <span class='dim'>curiosity &gt; frameworks</span>",
-  ];
-  const projectsLines = (): string[] => [
-    "the curated five —",
-    ...PROJECTS.flatMap((p) => [
-      `  ▸ ${ext(projectUrl(p.slug), `<b>${esc(p.name)}</b>`)} — ${esc(p.description)}`,
-    ]),
-    "",
-    `everything else lives in <span class="a">repos</span>.`,
-  ];
-
-  // Async output ownership: each run gets a token; results print only while
-  // their token is still pending, so `clear` during a fetch drops the
-  // late result instead of resurrecting it.
-  let runSeq = 0;
-  const pending = new Set<number>();
-
-  const commands: Record<string, Cmd> = {
-    help: () => [
-      "available commands —",
-      "  <span class='a'>whoami</span>     who am i",
-      "  <span class='a'>about</span>      a little more",
-      "  <span class='a'>skills</span>     what i work with",
-      "  <span class='a'>projects</span>   the curated five",
-      "  <span class='a'>repos</span>      every public repo, live from github",
-      "  <span class='a'>github</span>     open my github",
-      "  <span class='a'>neofetch</span>   the rundown",
-      "  <span class='a'>ls</span> · <span class='a'>cat</span>   nose around files",
-      "  <span class='a'>echo</span> · <span class='a'>date</span> · <span class='a'>fortune</span> · <span class='a'>clear</span>",
-      "",
-      "<span class='dim'>↑/↓ history · tab completes</span>",
-    ],
-    whoami: () => [
-      `<span class='grad'>${esc(SITE.name)}</span> — ${esc(SITE.role)}`,
-      esc(SITE.tagline),
-      "",
-      `→ ${ghLink}`,
-    ],
-    about: () => aboutLines(),
-    skills: () => skillsLines(),
-    projects: () => projectsLines(),
-    repos: (_a, _r, ctx) => {
-      const loading = line(`<span class="dim">fetching public repos from GitHub …</span>`);
+  const host: Host = {
+    write(text, stream) {
+      const s = streams[stream];
+      const lines = (s.partial + text).split("\n");
+      s.partial = lines.pop()!;
+      // A burst longer than the scrollback would be trimmed away anyway.
+      for (const l of lines.slice(-SCROLLBACK_LINES)) {
+        appendLine(s.ansi.render(l), stream === "err" ? "err" : undefined);
+      }
+      trimScrollback();
       scrollDown();
-      const id = ctx.id;
-      pending.add(id);
-      loadRepos().then((res) => {
-        if (!pending.has(id)) return; // cleared while pending — stay silent
-        pending.delete(id);
-        const result = !res.ok
-          ? [
-              `<span class="err">${esc(res.message)}</span>`,
-              `browse them directly: ${ext(res.fallback, esc(res.fallback.replace(/^https?:\/\//, "")))}`,
-            ]
-          : res.repos.length === 0
-            ? [
-                "no public repos on GitHub right now —",
-                `meanwhile, the curated set is one <span class="a">projects</span> away.`,
-              ]
-            : repoLines(res.repos);
-        // replace the loading placeholder in place, so the result stays
-        // beside its command even if later commands ran while pending
-        const frag = document.createDocumentFragment();
-        for (const html of result) frag.appendChild(makeLine(html));
-        out.insertBefore(frag, loading);
-        loading.remove();
-        scrollDown();
-      });
-      return null;
     },
-    github: () => {
-      window.open(SITE.githubUrl, "_blank", "noopener");
-      return [`opening ${ghLink} …`];
-    },
-    ls: () => [
-      "about.txt   skills.txt   projects.url   github.url   <span class='a'>secrets/</span>",
-    ],
-    cat: (args) => {
-      const f = args[0];
-      if (!f) return ["usage: cat <file>"];
-      const files: Record<string, string[]> = {
-        "about.txt": aboutLines(),
-        "skills.txt": skillsLines(),
-        "projects.url": PROJECTS.map((p) => projectUrl(p.slug)),
-        "github.url": [SITE.githubUrl],
-      };
-      return (
-        own(files, f) || [
-          `<span class='err'>cat: ${esc(f)}: No such file or directory</span>`,
-        ]
-      );
-    },
-    neofetch: () => [neofetchBlock()],
-    echo: (_a, rest) => [esc(rest || "")],
-    date: () => [new Date().toString()],
-    pwd: () => ["/home/janos"],
-    fortune: () => [pick(FORTUNES)],
-    sudo: () => [
-      "<span class='err'>sudo: permission denied</span> — you're a guest here, but a welcome one.",
-    ],
-    secrets: () => ["<span class='dim'>nice try — nothing here but stardust.</span>"],
-    history: () =>
-      hist.length
-        ? Array.from(
-            { length: hist.length },
-            (_, i) => `  ${i + 1}  ${esc(hist.at(i))}`
-          )
-        : ["(empty)"],
-    clear: () => {
-      pending.clear();
+    clear() {
       out.innerHTML = "";
-      return null;
+    },
+    exit() {
+      // typed, so it follows the keyboard path: no animation
+      hideWindow("closed", true);
+    },
+    open(url) {
+      window.open(url, "_blank", "noopener");
+    },
+    cols() {
+      const width = cell.getBoundingClientRect().width / 20;
+      return width > 0 ? Math.max(20, Math.floor(out.clientWidth / width)) : 80;
+    },
+    now: () => new Date(),
+    random: Math.random,
+    loadRepos: () => loadRepos(),
+    themes: () => THEMES,
+    theme: () => term.dataset.theme ?? THEMES[0]!,
+    setTheme(name) {
+      if (!THEMES.includes(name)) return false;
+      term.dataset.theme = name;
+      try {
+        localStorage.setItem(THEME_KEY, name);
+      } catch {
+        // storage disabled: the theme still applies for this visit
+      }
+      return true;
     },
   };
 
-  const COMMAND_NAMES = Object.keys(commands);
-  const CAT_FILES = ["about.txt", "skills.txt", "projects.url", "github.url"];
+  term.dataset.theme = storedTheme() ?? THEMES[0]!;
 
-  const hist = createHistory();
+  // ---- session --------------------------------------------------------------
+
+  // The filesystem is the machine: it outlives a closed window. Each window
+  // gets its own shell (cwd, variables, aliases, history) on top of it.
+  const fs = createVfs(
+    buildFsImage(COMMANDS, { startedAt: Date.now(), now: Date.now }),
+    { user: DEFAULT_ENV.USER! }
+  );
+  const newShell = () =>
+    createShell({
+      fs,
+      host,
+      commands: COMMANDS,
+      env: { ...DEFAULT_ENV },
+      aliases: { ...DEFAULT_ALIASES },
+      name: "zsh",
+    });
+  let shell = newShell();
+
+  const promptHtml = () =>
+    `<span class="u">visitor</span><span class="dim">@</span><span class="h">janos</span><span class="dim">:</span><span class="p">${esc(shell.promptPath())}</span><span class="dim">$</span>&nbsp;`;
+
+  function syncPrompt() {
+    const path = shell.promptPath();
+    cwdLabel.textContent = path;
+    title.textContent = `visitor@janos: ${path} — zsh`;
+  }
+
+  /** Print whatever a command left without a trailing newline, then drop open styles. */
+  function flushStreams() {
+    for (const key of ["out", "err"] as const) {
+      const s = streams[key];
+      if (s.partial) appendLine(s.ansi.render(s.partial), key === "err" ? "err" : undefined);
+      s.partial = "";
+      s.ansi.reset();
+    }
+  }
+
+  // History navigation: `hi` walks shell.history; past the end is the draft.
   let hi = 0;
   let draft = "";
+  // The foreground command, if any. It owns the terminal until it settles
+  // or Ctrl+C aborts it; the prompt is hidden meanwhile and Enter waits.
+  let running: AbortController | null = null;
 
   function syncWidth() {
     kbd.style.width = Math.max(2, kbd.value.length + 1) + "ch";
   }
-  function updateGhost() {
-    const completion = completionFor(kbd.value, COMMAND_NAMES, CAT_FILES);
-    const capped = kbd.scrollWidth > kbd.clientWidth + 1;
-    ghost.textContent =
-      !capped && completion?.candidate
-        ? completion.candidate.slice(completion.token.length)
-        : "";
-  }
-
-  function acceptSuggestion() {
-    if (!ghost.textContent) return false;
-    const completion = completionFor(kbd.value, COMMAND_NAMES, CAT_FILES);
-    if (!completion?.candidate) return false;
-    setInput(completion.prefix + completion.candidate);
-    caretEnd();
-    updateGhost();
-    return true;
-  }
-
   function setInput(v: string) {
     kbd.value = v;
     syncWidth();
@@ -317,28 +215,78 @@ const reposDisplay = SITE.reposUrl.replace(/^https?:\/\//, "");
       kbd.setSelectionRange(kbd.value.length, kbd.value.length);
     } catch {}
   }
-
-  function run(raw: string) {
-    line(PROMPT + esc(raw));
-    const cmdText = raw.trim();
-    const id = ++runSeq;
-    if (cmdText) {
-      hist.push(cmdText);
-      const parts = cmdText.split(/\s+/);
-      const name = parts[0].toLowerCase();
-      const rest = cmdText.slice(parts[0].length).trim();
-      const fn = own(commands, name);
-      if (fn) printLines(fn(parts.slice(1), rest, { id }));
-      else
-        line(
-          `<span class='err'>command not found: ${esc(name)}</span> — try <span class='a'>help</span>`
-        );
-    }
+  function updateGhost() {
+    const completion = running ? null : shell.complete(kbd.value);
+    const capped = kbd.scrollWidth > kbd.clientWidth + 1;
+    ghost.textContent =
+      !capped && completion?.candidate
+        ? completion.candidate.slice(completion.token.length)
+        : "";
+  }
+  function acceptSuggestion() {
+    if (!ghost.textContent) return false;
+    const completion = shell.complete(kbd.value);
+    if (!completion?.candidate) return false;
+    setInput(completion.prefix + completion.candidate);
+    caretEnd();
+    updateGhost();
+    return true;
+  }
+  function resetInput() {
     draft = "";
-    hi = hist.length;
+    hi = shell.history.length;
     setInput("");
     ghost.textContent = "";
+  }
+
+  async function submit(raw: string) {
+    if (running) return;
+    const session = shell;
+    appendLine(promptHtml() + esc(raw));
+    const controller = new AbortController();
+    running = controller;
+    term.dataset.busy = "true";
+    resetInput();
     scrollDown();
+    await session.run(raw, { signal: controller.signal });
+    // `exit` or the close button ended this session while the command ran
+    if (session !== shell || running !== controller) return;
+    flushStreams();
+    trimScrollback();
+    running = null;
+    delete term.dataset.busy;
+    syncPrompt();
+    // Anything typed while the command ran stays in the input (type-ahead).
+    hi = shell.history.length;
+    updateGhost();
+    scrollDown();
+  }
+
+  /** Ctrl+C: abort the foreground command, or abandon the line being typed. */
+  function interrupt() {
+    if (running) {
+      running.abort();
+      appendLine("^C");
+    } else {
+      appendLine(promptHtml() + esc(kbd.value) + "^C");
+      resetInput();
+    }
+    scrollDown();
+  }
+
+  /** A fresh shell in a clean window; whatever the old one was running is abandoned. */
+  function startSession() {
+    running?.abort();
+    running = null;
+    delete term.dataset.busy;
+    shell = newShell();
+    out.innerHTML = "";
+    for (const s of Object.values(streams)) {
+      s.partial = "";
+      s.ansi.reset();
+    }
+    resetInput();
+    syncPrompt();
   }
 
   kbd.addEventListener("input", () => {
@@ -348,29 +296,43 @@ const reposDisplay = SITE.reposUrl.replace(/^https?:\/\//, "");
   form.addEventListener("submit", (e) => {
     // Mobile keyboards submit the form ("go") — same as Enter.
     e.preventDefault();
-    ghost.textContent = "";
-    run(kbd.value);
+    submit(kbd.value);
   });
   kbd.addEventListener("keydown", (e) => {
+    const ctrlOnly = e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey;
+    // Autofill and some IMEs dispatch keydown without a key.
+    const key = (e.key ?? "").toLowerCase();
     if (e.key === "Enter") {
       e.preventDefault();
       if (e.isComposing) return;
-      ghost.textContent = "";
-      run(kbd.value);
+      submit(kbd.value);
+    } else if (ctrlOnly && key === "c") {
+      // With a selection Ctrl+C is the platform's copy (Windows, Linux).
+      if (kbd.selectionStart !== kbd.selectionEnd || String(window.getSelection())) return;
+      e.preventDefault();
+      interrupt();
+    } else if (ctrlOnly && key === "l") {
+      e.preventDefault();
+      host.clear();
+    } else if (ctrlOnly && key === "u") {
+      e.preventDefault();
+      kbd.setRangeText("", 0, kbd.selectionStart ?? kbd.value.length, "start");
+      syncWidth();
+      updateGhost();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      if (hist.length) {
-        if (hi === hist.length) draft = kbd.value;
-        hi = hist.step(hi, -1);
-        setInput(hist.at(hi));
+      if (shell.history.length) {
+        if (hi === shell.history.length) draft = kbd.value;
+        hi = Math.max(0, hi - 1);
+        setInput(shell.history[hi] ?? "");
         caretEnd();
         updateGhost();
       }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (hist.length) {
-        hi = hist.step(hi, 1);
-        setInput(hi === hist.length ? draft : hist.at(hi));
+      if (shell.history.length) {
+        hi = Math.min(shell.history.length, hi + 1);
+        setInput(hi === shell.history.length ? draft : shell.history[hi]!);
         caretEnd();
         updateGhost();
       }
@@ -380,24 +342,27 @@ const reposDisplay = SITE.reposUrl.replace(/^https?:\/\//, "");
     } else if (
       e.key === "ArrowRight" &&
       !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey &&
-      kbd.selectionStart === kbd.value.length
+      !e.isComposing &&
+      kbd.selectionStart === kbd.value.length &&
+      kbd.selectionEnd === kbd.value.length
     ) {
       if (acceptSuggestion()) e.preventDefault();
     } else if (e.key === "Tab") {
-      // Shift+Tab, modifiers, IME, empty/unmatched/exact input all escape
-      // to native focus order — Tab is only ours when it completes or lists.
-      if (!shouldInterceptTab(e, kbd.value, COMMAND_NAMES, CAT_FILES)) return;
+      // Shift+Tab, modifiers, IME, and input with nothing to complete all
+      // escape to native focus order — Tab is only ours when it completes or lists.
+      const completion = running ? null : shell.complete(kbd.value);
+      if (!shouldInterceptTab(e, completion)) return;
       e.preventDefault();
       if (acceptSuggestion()) return;
-      const completion = completionFor(kbd.value, COMMAND_NAMES, CAT_FILES);
-      if (!completion) return;
-      if (completion.matches.length === 1) {
-        setInput(completion.prefix + completion.matches[0]);
+      const { prefix, matches } = completion!;
+      if (matches.length === 1) {
+        setInput(prefix + matches[0]);
         caretEnd();
         updateGhost();
-      } else if (completion.matches.length > 1) {
-        line(PROMPT + esc(kbd.value));
-        line(esc(completion.matches.join("   ")));
+      } else {
+        // list the choices by their last path segment, like a shell does
+        appendLine(promptHtml() + esc(kbd.value));
+        appendLine(esc(matches.map((m) => m.replace(/^.*\/(?=.)/, "")).join("   ")));
         scrollDown();
       }
     }
@@ -411,6 +376,234 @@ const reposDisplay = SITE.reposUrl.replace(/^https?:\/\//, "");
     if ((e.target as HTMLElement).closest("a,button,input")) return;
     if (!String(window.getSelection())) focusKbd();
   });
+
+  // ---- window ---------------------------------------------------------------
+  // The terminal is a window: the title bar drags it, the edges resize it,
+  // and the three buttons close, minimise and zoom it. Until it is first
+  // moved, resized or zoomed it sits where the page layout centres it.
+
+  type WindowState = "open" | "minimized" | "closed";
+  let windowState: WindowState = "open";
+  /** Viewport rectangle of a moved/resized/zoomed window; null while the layout places it. */
+  let rect: Rect | null = null;
+  let zoomed = false;
+  /** Geometry to return to when zoom is switched off. */
+  let unzoomed: Rect | null = null;
+
+  // Phones get no dragging or edge resizing: the window already fills the width.
+  const roomy = window.matchMedia("(min-width: 561px)");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const EASE =
+    getComputedStyle(document.documentElement).getPropertyValue("--ease").trim() ||
+    "ease-out";
+
+  const viewport = () => ({
+    w: document.documentElement.clientWidth,
+    h: document.documentElement.clientHeight,
+  });
+  function currentRect(): Rect {
+    const r = term.getBoundingClientRect();
+    return { x: r.left, y: r.top, w: r.width, h: r.height };
+  }
+
+  /** Apply `rect` (or hand placement back to the layout) and tell the scene. */
+  function place() {
+    if (rect) {
+      if (!term.classList.contains("is-floating")) {
+        // The floating window is fixed to the viewport, which only holds once
+        // its wrapper no longer carries the arrival animation's transform.
+        term.parentElement!.classList.add("is-landed");
+        term.classList.add("is-floating");
+      }
+      term.style.width = `${rect.w}px`;
+      term.style.height = `${rect.h}px`;
+      term.style.translate = `${rect.x}px ${rect.y}px`;
+    } else {
+      term.classList.remove("is-floating");
+      term.style.width = term.style.height = term.style.translate = "";
+    }
+    window.dispatchEvent(new Event("termgeometry"));
+  }
+
+  /** Follow one pointer from press to release, reporting its travel. */
+  function trackPointer(
+    handle: HTMLElement,
+    down: PointerEvent,
+    onMove: (dx: number, dy: number) => void
+  ) {
+    down.preventDefault(); // no text selection while dragging
+    handle.setPointerCapture(down.pointerId);
+    const move = (e: PointerEvent) =>
+      onMove(e.clientX - down.clientX, e.clientY - down.clientY);
+    const stop = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", stop);
+      handle.removeEventListener("pointercancel", stop);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", stop);
+    handle.addEventListener("pointercancel", stop);
+  }
+
+  bar.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || zoomed || !roomy.matches) return;
+    if ((e.target as HTMLElement).closest("button")) return;
+    const start = rect ?? currentRect();
+    trackPointer(bar, e, (dx, dy) => {
+      rect = clampRect(
+        { ...start, x: start.x + dx, y: start.y + dy },
+        viewport(),
+        bar.offsetHeight
+      );
+      place();
+    });
+  });
+  bar.addEventListener("dblclick", (e) => {
+    if (!(e.target as HTMLElement).closest("button")) setZoom(!zoomed);
+  });
+
+  for (const edge of ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as ResizeEdge[]) {
+    const grip = document.createElement("div");
+    grip.className = "term__grip";
+    grip.dataset.edge = edge;
+    grip.setAttribute("aria-hidden", "true");
+    grip.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || zoomed || !roomy.matches) return;
+      const start = rect ?? currentRect();
+      trackPointer(grip, e, (dx, dy) => {
+        rect = resizeRect(start, edge, dx, dy, viewport());
+        place();
+        scrollDown();
+      });
+    });
+    term.appendChild(grip);
+  }
+
+  function setZoom(on: boolean) {
+    if (on === zoomed) return;
+    zoomed = on;
+    if (on) {
+      unzoomed = rect;
+      rect = { x: 0, y: 0, ...viewport() };
+    } else {
+      rect = unzoomed;
+      unzoomed = null;
+    }
+    term.classList.toggle("is-zoomed", on);
+    zoomButton.setAttribute("aria-pressed", String(on));
+    place();
+    scrollDown();
+  }
+
+  window.addEventListener("resize", () => {
+    if (!rect) return;
+    rect = zoomed
+      ? { x: 0, y: 0, ...viewport() }
+      : clampRect(rect, viewport(), bar.offsetHeight);
+    place();
+  });
+
+  // Open, close and minimise fade with a slight scale; keyboard-driven
+  // changes are instant, and reduced motion keeps the fade but not the move.
+  let motion: Animation | null = null;
+  function animateWindow(away: string, direction: "in" | "out", instant: boolean) {
+    motion?.cancel();
+    motion = null;
+    if (instant) return Promise.resolve();
+    const hiddenFrame = {
+      opacity: 0,
+      transform: reducedMotion.matches ? "none" : away,
+    };
+    const shownFrame = { opacity: 1, transform: "none" };
+    const animation = term.animate(
+      direction === "out" ? [shownFrame, hiddenFrame] : [hiddenFrame, shownFrame],
+      { duration: 180, easing: EASE, fill: "forwards" }
+    );
+    motion = animation;
+    // a cancelled animation was superseded; whoever cancelled it owns the state
+    return animation.finished.then(
+      () => {},
+      () => {}
+    );
+  }
+  const AWAY: Record<Exclude<WindowState, "open">, string> = {
+    closed: "scale(0.96)",
+    minimized: "translateY(24px) scale(0.9)",
+  };
+
+  const dock = document.createElement("button");
+  dock.type = "button";
+  dock.className = "dock";
+  dock.hidden = true;
+  dock.innerHTML =
+    '<span class="dock__icon" aria-hidden="true">&gt;_</span><span class="dock__label"></span>';
+  const dockLabel = dock.lastElementChild as HTMLElement;
+  term.after(dock);
+
+  async function hideWindow(next: Exclude<WindowState, "open">, instant: boolean) {
+    if (windowState !== "open") return;
+    windowState = next;
+    const hadFocus = term.contains(document.activeElement);
+    if (next === "closed") {
+      running?.abort();
+      running = null;
+      delete term.dataset.busy;
+    }
+    dockLabel.textContent = next === "closed" ? "open terminal" : title.textContent;
+    await animateWindow(AWAY[next], "out", instant);
+    if (windowState !== next) return; // reopened before the animation ended
+    term.hidden = true;
+    dock.hidden = false;
+    motion?.cancel();
+    motion = null;
+    if (hadFocus) dock.focus({ preventScroll: true });
+    window.dispatchEvent(new Event("termgeometry"));
+  }
+
+  function showWindow(instant: boolean) {
+    if (windowState === "open") return;
+    const from = windowState;
+    windowState = "open";
+    if (from === "closed") {
+      // a closed window is gone: the next one starts over, back in the middle
+      startSession();
+      zoomed = false;
+      unzoomed = rect = null;
+      term.classList.remove("is-zoomed");
+      zoomButton.setAttribute("aria-pressed", "false");
+    }
+    dock.hidden = true;
+    term.hidden = false;
+    place();
+    scrollDown();
+    focusKbd();
+    animateWindow(AWAY[from], "in", instant).then(() => {
+      if (windowState !== "open") return;
+      motion?.cancel();
+      motion = null;
+    });
+  }
+
+  // A click with detail 0 came from the keyboard or assistive technology.
+  dock.addEventListener("click", (e) => showWindow(e.detail === 0));
+
+  function windowButton(cls: string, label: string, onClick: (instant: boolean) => void) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = cls;
+    button.setAttribute("aria-label", label);
+    button.addEventListener("click", (e) => onClick(e.detail === 0));
+    return button;
+  }
+  const zoomButton = windowButton("dot dot--zoom", "Zoom terminal", () => setZoom(!zoomed));
+  zoomButton.setAttribute("aria-pressed", "false");
+  dots.setAttribute("role", "group");
+  dots.setAttribute("aria-label", "Window controls");
+  dots.replaceChildren(
+    windowButton("dot dot--close", "Close terminal", (instant) => hideWindow("closed", instant)),
+    windowButton("dot dot--min", "Minimize terminal", (instant) => hideWindow("minimized", instant)),
+    zoomButton
+  );
 
   term.dataset.ready = "true";
   syncWidth();

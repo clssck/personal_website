@@ -1,7 +1,7 @@
 /**
  * Canonical profile data — the single source of truth for site identity,
- * server-rendered content and terminal commands. Keep page copy here so
- * static HTML and the interactive terminal never drift apart.
+ * server-rendered content and the files in the terminal's home directory.
+ * Keep page copy here so static HTML and the shell never drift apart.
  */
 
 export const SITE = {
@@ -14,7 +14,7 @@ export const SITE = {
   apiReposUrl: "https://api.github.com/users/clssck/repos",
   title: "János Földvárszki — Engineer",
   description:
-    "Personal site of János Földvárszki — Engineer. I make annoying things easier: Dataiku DSS and Veeva Vault RIM tooling, an interactive terminal, and a cat.",
+    "Personal site of János Földvárszki — Engineer. I make annoying things easier: Go and TypeScript tooling for obscure software, a working shell in the browser, and a cat.",
 } as const;
 
 export interface Project {
@@ -22,6 +22,8 @@ export interface Project {
   slug: string;
   name: string;
   description: string;
+  /** Main language or runtime, as one short label. */
+  stack: string;
 }
 
 /** Curated public projects (all live at github.com/clssck/<slug>). */
@@ -30,51 +32,58 @@ export const PROJECTS: Project[] = [
     slug: "dataiku-sdk",
     name: "dataiku-sdk",
     description:
-      "Schema-first TypeScript SDK/CLI for Dataiku DSS — TypeBox schemas, runtime validation, Bun.",
+      "SDK and dss CLI for automating Dataiku DSS, built for coding agents to drive. Schema-first, validated at runtime.",
+    stack: "TypeScript",
   },
   {
-    slug: "VeevaBro",
-    name: "VeevaBro",
-    description: "Browser extension for editing Vault RIM lifecycles.",
+    slug: "SP_Catalog",
+    name: "SP_Catalog",
+    description:
+      "Terminal UI that crawls SharePoint directories and catalogs them into SQLite.",
+    stack: "Go",
   },
   {
-    slug: "VaultRIM_LC_CLI",
-    name: "VaultRIM_LC_CLI",
-    description: "Command-line tool for Vault RIM lifecycle changes.",
+    slug: "sqltoerdiagram",
+    name: "sqltoerdiagram",
+    description:
+      "dbt-erd: point it at a dbt project and get one self-contained HTML file with interactive ER and lineage diagrams.",
+    stack: "JavaScript",
+  },
+  {
+    slug: "researcher-mcp",
+    name: "researcher-mcp",
+    description:
+      "MCP server that gives a coding assistant a research desk: search, documentation lookup and API discovery.",
+    stack: "JavaScript",
+  },
+  {
+    slug: "md2pdf-cli",
+    name: "md2pdf-cli",
+    description:
+      "Markdown to PDF from the command line. Mermaid diagrams survive the trip.",
+    stack: "JavaScript",
   },
   {
     slug: "Veeva_RegiNoti",
     name: "Veeva_RegiNoti",
     description:
-      "Registration state-change notifications to the responsible person.",
-  },
-  {
-    slug: "HelpdeskPOC",
-    name: "HelpdeskPOC",
-    description:
-      "Proof of concept delivering helpdesk tasks directly into Vault RIM.",
+      "Vault record trigger that tells the responsible person when a registration changes state.",
+    stack: "Java",
   },
 ];
-
-/** Short introduction shown on the first screen (below the name). */
-export const INTRO = [
-  "Engineer building SDKs, CLI tools and browser extensions around",
-  "Dataiku DSS and Veeva Vault RIM — the boring, repetitive",
-  "parts of work get scripted until they're one command.",
-] as const;
 
 /** Longer story for `about` and the #about section. */
 export const ABOUT = [
   "Hi — I'm János, an engineer.",
-  "Most of my work is tooling around Dataiku DSS and Veeva Vault RIM: an SDK and CLI for DSS, plus browser extensions and automations for Vault RIM lifecycles and registrations.",
-  "This site is a terminal in a cat diorama. Type help to poke around.",
+  "I build tools for the parts of work that should not need this many clicks: SDKs, CLIs and browser extensions, mostly in Go and TypeScript, usually for software nobody else wants to touch.",
+  "This site is a shell in a cat diorama. Type help to poke around.",
 ] as const;
 
 /** Truthful skill/tooling lines for `skills` and neofetch. */
 export const SKILLS = [
-  "Dataiku DSS — SDKs · CLI · projects · automation",
-  "Veeva Vault RIM — lifecycles · registrations · browser extensions",
-  "tooling — TypeScript · Bun · Astro · TypeBox · Python",
+  "languages — Go · TypeScript · Python when cornered",
+  "tooling — Bun · Astro · TypeBox · Bubble Tea · SQLite",
+  "habitat — obscure enterprise software, documented or not",
 ] as const;
 
 export function projectUrl(slug: string): string {

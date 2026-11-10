@@ -393,7 +393,79 @@ a:focus-visible {
   gap: 0.4rem;
 }
 
+/* Terminal colour themes. The tokens are scoped to the window so the scene
+   behind it keeps its own palette. Catppuccin Mocha is the default; the
+   `theme` command switches flavours through data-theme. */
 .term {
+  --fg: #cdd6f4;
+  --strong: #ffffff;
+  --faint: #9399b2;
+  --teal: #94e2d5;
+  --violet: #cba6f7;
+  --amber: #f9e2af;
+  --red: #f38ba8;
+  --green: #a6e3a1;
+  --blue: #89b4fa;
+  --caret: #f5e0dc;
+  --term-bg: rgba(30, 30, 46, 0.74);
+  --term-line: rgba(205, 214, 244, 0.14);
+}
+.term[data-theme="macchiato"] {
+  --fg: #cad3f5;
+  --faint: #939ab7;
+  --teal: #8bd5ca;
+  --violet: #c6a0f6;
+  --amber: #eed49f;
+  --red: #ed8796;
+  --green: #a6da95;
+  --blue: #8aadf4;
+  --caret: #f4dbd6;
+  --term-bg: rgba(36, 39, 58, 0.76);
+  --term-line: rgba(202, 211, 245, 0.14);
+}
+.term[data-theme="frappe"] {
+  --fg: #c6d0f5;
+  --faint: #949cbb;
+  --teal: #81c8be;
+  --violet: #ca9ee6;
+  --amber: #e5c890;
+  --red: #e78284;
+  --green: #a6d189;
+  --blue: #8caaee;
+  --caret: #f2d5cf;
+  --term-bg: rgba(48, 52, 70, 0.78);
+  --term-line: rgba(198, 208, 245, 0.16);
+}
+.term[data-theme="latte"] {
+  --fg: #4c4f69;
+  --strong: #1e1e2e;
+  --faint: #6c6f85;
+  --teal: #179299;
+  --violet: #8839ef;
+  --amber: #df8e1d;
+  --red: #d20f39;
+  --green: #40a02b;
+  --blue: #1e66f5;
+  --caret: #dc8a78;
+  --term-bg: rgba(239, 241, 245, 0.9);
+  --term-line: rgba(76, 79, 105, 0.2);
+}
+.term[data-theme="night"] {
+  --fg: #eef2f0;
+  --faint: rgba(255, 255, 255, 0.45);
+  --teal: #5eead4;
+  --violet: #b79cf6;
+  --amber: #ffc879;
+  --red: #ff7a7a;
+  --green: #7ee0a1;
+  --blue: #7fb4ff;
+  --caret: #5eead4;
+  --term-bg: rgba(10, 14, 18, 0.5);
+  --term-line: rgba(255, 255, 255, 0.12);
+}
+
+.term {
+  position: relative;
   width: 100%;
   pointer-events: auto;
   height: min(70svh, 540px);
@@ -410,29 +482,134 @@ a:focus-visible {
     0 0 0 1px rgba(0, 0, 0, 0.4);
   overflow: hidden;
 }
+.term[hidden],
+.dock[hidden] {
+  display: none;
+}
+/* A moved, resized or zoomed window leaves the page flow and is placed in
+   viewport coordinates; Terminal.astro sets its size and offset inline. */
+.term.is-floating {
+  position: fixed;
+  left: 0;
+  top: 0;
+}
+.term.is-zoomed {
+  border-radius: 0;
+}
 
 .term__bar {
+  user-select: none;
+  -webkit-user-select: none;
   display: flex;
   align-items: center;
   gap: 0.7rem;
   padding: 0.6rem 0.9rem;
   border-bottom: 1px solid var(--term-line);
-  background: rgba(255, 255, 255, 0.025);
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
   flex: 0 0 auto;
 }
 .dots {
   display: inline-flex;
   gap: 0.42rem;
+  /* above the corner resize handle, which overlaps the first button */
+  position: relative;
+  z-index: 3;
 }
-.dots i {
+.dots i,
+.dot {
   width: 11px;
   height: 11px;
   border-radius: 50%;
   background: #3a4047;
 }
-.dots i:nth-child(1) { background: #ff5f57; }
-.dots i:nth-child(2) { background: #febc2e; }
-.dots i:nth-child(3) { background: #28c840; }
+.dots :nth-child(1) { background: #ff5f57; }
+.dots :nth-child(2) { background: #febc2e; }
+.dots :nth-child(3) { background: #28c840; }
+/* window controls: the script upgrades the static dots to buttons */
+.dot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  font: 700 9px/1 var(--mono);
+  color: transparent;
+  cursor: pointer;
+}
+/* a finger-sized target around an 11px button; neighbours split the gap */
+.dot::after {
+  content: "";
+  position: absolute;
+  inset: -12px -3px;
+}
+.dot--close::before { content: "×"; }
+.dot--min::before { content: "−"; }
+.dot--zoom::before { content: "+"; }
+.dots:focus-within .dot { color: rgba(0, 0, 0, 0.6); }
+@media (hover: hover) and (pointer: fine) {
+  .dots:hover .dot { color: rgba(0, 0, 0, 0.6); }
+}
+.dot:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+/* resize handles along the window's edges and corners */
+.term__grip {
+  position: absolute;
+  z-index: 2;
+  /* the handle owns panning; pinch zoom stays with the browser */
+  touch-action: pinch-zoom;
+}
+/* corners are larger than the 14px corner radius: the window's rounded clip
+   swallows hits outside the arc, so the handle must reach inside it */
+.term__grip[data-edge="n"] { top: 0; left: 16px; right: 16px; height: 4px; cursor: ns-resize; }
+.term__grip[data-edge="s"] { bottom: 0; left: 16px; right: 16px; height: 4px; cursor: ns-resize; }
+.term__grip[data-edge="e"] { right: 0; top: 16px; bottom: 16px; width: 4px; cursor: ew-resize; }
+.term__grip[data-edge="w"] { left: 0; top: 16px; bottom: 16px; width: 4px; cursor: ew-resize; }
+.term__grip[data-edge="ne"] { top: 0; right: 0; width: 16px; height: 16px; cursor: nesw-resize; }
+.term__grip[data-edge="sw"] { bottom: 0; left: 0; width: 16px; height: 16px; cursor: nesw-resize; }
+.term__grip[data-edge="nw"] { top: 0; left: 0; width: 16px; height: 16px; cursor: nwse-resize; }
+.term__grip[data-edge="se"] { bottom: 0; right: 0; width: 16px; height: 16px; cursor: nwse-resize; }
+.term.is-zoomed .term__grip {
+  display: none;
+}
+/* phones: the window already fills the width, so no dragging or resizing */
+@media (max-width: 560px) {
+  .term__grip { display: none; }
+}
+@media (min-width: 561px) {
+  .term__bar { touch-action: pinch-zoom; }
+}
+
+/* launcher shown while the window is closed or minimised */
+.dock {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--term-line);
+  border-radius: 12px;
+  background: var(--term-bg);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  color: var(--fg);
+  font: 0.82rem var(--mono);
+  cursor: pointer;
+}
+.dock__icon {
+  color: var(--teal);
+  font-weight: 700;
+}
+.dock:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .dock:hover { border-color: var(--teal); }
+}
 .term__title {
   font-family: var(--mono);
   font-size: 0.76rem;
@@ -454,15 +631,17 @@ a:focus-visible {
   color: var(--fg);
   cursor: text;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-color: color-mix(in srgb, var(--fg) 20%, transparent) transparent;
 }
 .term__screen::-webkit-scrollbar { width: 8px; }
 .term__screen::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
+  background: color-mix(in srgb, var(--fg) 18%, transparent);
   border-radius: 8px;
 }
 
+/* min-height keeps blank output lines one row tall */
 .ln {
+  min-height: 1.65em;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -476,7 +655,13 @@ a:focus-visible {
 .prompt { margin-right: 0.5ch; }
 .prompt .u { color: var(--teal); }
 .prompt .h { color: var(--violet); }
+.prompt .p { color: var(--blue); }
 .prompt .dim { color: var(--faint); }
+/* a foreground command owns the terminal: no prompt until it finishes */
+.term[data-busy] .prompt,
+.term[data-busy] .ghost {
+  visibility: hidden;
+}
 
 /* visible native input — width tracks content in ch (monospace, set by JS) */
 .cmdwrap {
@@ -496,7 +681,7 @@ a:focus-visible {
   margin: 0;
   font: inherit;
   color: var(--fg);
-  caret-color: var(--teal);
+  caret-color: var(--caret);
 }
 /* The native caret indicates editing without outlining the whole terminal. */
 #cmd:focus {
@@ -516,7 +701,7 @@ a:focus-visible {
   width: 0.95ch;
   height: 1.15em;
   border-radius: 1px;
-  background: var(--teal);
+  background: var(--caret);
   opacity: 0.85;
   pointer-events: none;
   user-select: none;
@@ -531,13 +716,23 @@ a:focus-visible {
   50% { opacity: 0; }
 }
 
-/* content classes used inside injected output */
+/* content classes: .a/.k in the hint and no-JS intro, .err for stderr
+   lines, the rest for ANSI styles rendered by src/lib/ansi.ts */
 .a { color: var(--teal); }
 .k { color: var(--amber); }
 .dim { color: var(--faint); }
 .err { color: var(--red); }
-b, .b { color: #fff; font-weight: 600; }
-.ln a b { color: inherit; }
+.sgr-bold { color: var(--strong); font-weight: 600; }
+.sgr-dim { color: var(--faint); }
+.sgr-underline { text-decoration: underline; }
+.fg-black { color: var(--faint); }
+.fg-red { color: var(--red); }
+.fg-green { color: var(--green); }
+.fg-yellow { color: var(--amber); }
+.fg-blue { color: var(--blue); }
+.fg-magenta { color: var(--violet); }
+.fg-cyan { color: var(--teal); }
+.fg-white { color: var(--fg); }
 .ghost {
   flex: 0 1 auto;
   min-width: 0;
@@ -548,57 +743,6 @@ b, .b { color: #fff; font-weight: 600; }
   pointer-events: none;
   user-select: none;
 }
-.grad {
-  background: linear-gradient(100deg, var(--teal), var(--violet) 45%, var(--amber) 95%);
-  background-size: 220% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  font-weight: 700;
-  animation: sheen 8s var(--ease) infinite;
-}
-
-.neo {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 0 1.25rem;
-  align-items: start;
-}
-.neo__art {
-  margin: 0;
-  font: inherit;
-  white-space: pre;
-  color: var(--teal);
-}
-.neo__kv {
-  margin: 0;
-  display: grid;
-  gap: 0.1rem;
-  min-width: 0;
-}
-.neo__row {
-  display: grid;
-  grid-template-columns: 6ch minmax(0, 1fr);
-  gap: 0 0.75rem;
-}
-.neo__row dt {
-  color: var(--amber);
-}
-.neo__row dd {
-  margin: 0;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-/* ASCII art only where it fits — narrow screens get clean key/value rows */
-@media (max-width: 480px) {
-  .neo {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .neo__art {
-    display: none;
-  }
-}
-
 kbd {
   font-family: var(--mono);
   font-size: 0.85em;
@@ -606,7 +750,7 @@ kbd {
   border: 1px solid var(--term-line);
   border-bottom-width: 2px;
   border-radius: 5px;
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
   color: var(--fg);
 }
 
@@ -621,7 +765,7 @@ kbd {
   text-align: center;
   padding: 0.55rem 0.9rem;
   border-top: 1px solid var(--term-line);
-  background: rgba(255, 255, 255, 0.025);
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
 }
 .hint .a { color: var(--teal); }
 
@@ -650,9 +794,12 @@ kbd {
 @keyframes rise {
   to { opacity: 1; transform: translateY(0); }
 }
-@keyframes sheen {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
+/* Arrival over: no animation and no transform left on the wrapper, which
+   would otherwise be the containing block of the fixed floating window. */
+.reveal.is-landed {
+  opacity: 1;
+  transform: none;
+  animation: none;
 }
 @keyframes leafsway {
   0%, 100% { transform: rotate(0deg) translateY(0); }

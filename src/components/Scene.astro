@@ -265,15 +265,17 @@
   }, { passive: true });
 
   // ---- terminal occlusion ---------------------------------------------------
-  // The yarn layer is clipped by a hole cut to the terminal's rectangle (+ a
-  // small margin), so the thread and ball can never paint across the terminal
-  // at any tilt, viewport size or zoom. The hole is rebuilt from layout only
-  // when layout can change (resize, ResizeObserver, scroll, CSS animations) —
-  // the render loop never measures anything.
+  // The yarn layer is clipped by a hole cut to the terminal window's rectangle
+  // (+ a small margin), so the thread and ball can never paint across it at
+  // any tilt, viewport size or zoom, wherever the window is dragged. A closed
+  // or minimised window has no rectangle, so nothing is clipped. The hole is
+  // rebuilt from layout only when layout can change (resize, ResizeObserver,
+  // scroll, CSS animations, the window's own "termgeometry" event) — the
+  // render loop never measures anything.
   const threadClip = document.getElementById("threadClip") as HTMLElement | null;
-  const terminal = document.querySelector<HTMLElement>(".termwrap");
+  const terminal = document.getElementById("term");
   const HOLE_MARGIN = 3;   // px of clearance around the terminal rectangle
-  const REVEAL_SWEEP = 14; // px .reveal lifts the terminal on arrival
+  const REVEAL_SWEEP = 14; // px .reveal lifts the terminal's wrapper on arrival
 
   let clipKey = "";
 
@@ -288,9 +290,12 @@
     if (!localW || !localH) return;
     const sx = box.width / localW, sy = box.height / localH;
     const term = terminal.getBoundingClientRect();
-    // While .reveal is still running, the terminal is on its way up; cover the
-    // whole sweep (never measuring per frame) and re-cut when it lands.
-    const arriving = terminal.getAnimations().some((a) => a.playState === "running");
+    // While .reveal is still running on the wrapper, the terminal is on its
+    // way up; cover the whole sweep (never measuring per frame) and re-cut
+    // when it lands.
+    const arriving = (terminal.parentElement?.getAnimations() ?? []).some(
+      (a) => a.playState === "running"
+    );
     const pad = arriving ? REVEAL_SWEEP : 0;
     const x1 = (term.left - box.left) / sx - HOLE_MARGIN;
     const y1 = (term.top - box.top) / sy - HOLE_MARGIN - pad;
@@ -331,6 +336,7 @@
     new ResizeObserver(queueClip).observe(terminal);
     new ResizeObserver(queueClip).observe(threadClip);
     window.addEventListener("resize", queueClip, { passive: true });
+    window.addEventListener("termgeometry", queueClip);
     window.addEventListener("scroll", queueClip, { passive: true });
     // settle pass for the terminal's reveal (rise) and font/layout shifts
     document.addEventListener("animationstart", queueClip);
